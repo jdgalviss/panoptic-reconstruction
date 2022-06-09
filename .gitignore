@@ -1,6 +1,6 @@
 .idea
 preparation
-lib
+lib/csrc
 
 output
 *.ipynb_checkpoints*
@@ -12,3 +12,4 @@ diff_rendering
 core
 *loss_calculation-Copy*
 data/cow*
+out
