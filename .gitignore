@@ -1,8 +1,15 @@
 .idea
 preparation
-lib
-data
+lib/csrc
+
 output
 *.ipynb_checkpoints*
 *__pycache__*
 differential_rendering
+diff_rendering
+*.zip
+*.pth
+core
+*loss_calculation-Copy*
+data/cow*
+out
