@@ -597,8 +597,8 @@ class FrustumCompletion(nn.Module):
 
         # loss_weighted = loss_mean * config.MODEL.FRUSTUM3D.RGB_WEIGHT
 
-        rgb_values = torch.clamp(prediction.F, 0.0, 1.0)
-        rgb_prediction = Me.SparseTensor(rgb_values, prediction.C,
+        # rgb_values = torch.clamp(prediction.F, 0.0, 1.0)
+        rgb_prediction = Me.SparseTensor(prediction.F, prediction.C,
                                              coordinate_manager=prediction.coordinate_manager)
         # print(results.keys())
         geometry_prediction = results['geometry']

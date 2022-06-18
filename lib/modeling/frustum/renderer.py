@@ -97,6 +97,7 @@ class Renderer(object):
 
         # print("\nrendered_image shape: {}".format(images.shape))
         # print("rendered_image shape: {}".format(images[0, ..., :3].shape))
-        raycast_color = torch.clamp(raycast_color,0.0,1.0)
+        # raycast_color = torch.clamp(raycast_color,-1.0,1.0)
+        
         return raycast_color[0]      
         

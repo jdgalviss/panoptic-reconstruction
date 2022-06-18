@@ -191,6 +191,7 @@ class Front3D(torch.utils.data.Dataset):
 
         transforms["aux_views"] = t2d.Compose([
             t2d.ToTensor(),
+            t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
         ])
 
         transforms["color"] = t2d.Compose([

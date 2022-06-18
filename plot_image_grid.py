@@ -6,13 +6,14 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import cv2
 def plot_image(img):
     major_ticks = np.arange(0, 320, 40)
     minor_ticks = np.arange(0, 320, 20)
 
     major_ticksy = np.arange(0, 240, 40)
     minor_ticksy = np.arange(0, 240, 20)
-
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.grid(True)
     ax.imshow(img)

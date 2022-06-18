@@ -11,9 +11,14 @@ from typing import Tuple
 from torch.nn import functional as F
 import cv2
 device = torch.device(config.MODEL.DEVICE)
+from lib.data import transforms2d as t2d
+
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+_imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
+
 
 def plot_image(img):
     major_ticks = np.arange(0, 320, 40)
@@ -43,6 +48,7 @@ class RGBLoss(torch.nn.Module):
         super(RGBLoss, self).__init__()
         self.l1 = nn.L1Loss(reduction='sum')
         self.renderer = Renderer(camera_base_transform=None)
+        self.normalize_transform = t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
 
 
     def forward(self, geometry_prediction, rgb_prediction, aux_views, cam_poses, debug=False):
@@ -67,7 +73,7 @@ class RGBLoss(torch.nn.Module):
         # print("rgb_dense shape: ", rgb.shape)
 
         truncation = 1.5
-        sdf = torch.clamp(sdf,0.0,3.0)
+        # sdf = torch.clamp(sdf,0.0,3.0)
         sdf -= 1.5
         sdf = sdf.unsqueeze(0).unsqueeze(0)
         colors = rgb.permute(1,2,3,0).unsqueeze(0)
@@ -131,18 +137,29 @@ class RGBLoss(torch.nn.Module):
         angle = angles[0]
 
         img = self.renderer.render_image(locs, vals, sdf, colors, T, offset=offset, angle=None)
+        # print("img range: [{},{}]".format(torch.min(img),torch.max(img)))
+
         view = view.permute(1,2,0).to(device)
-        mask = torch.where(img == torch.tensor([0.0,0.0,0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([1.0]).to(device))
-        mask = img > torch.tensor([0.0,0.0,0.0]).to(device)
-        mask = (mask[:,:,0] * mask[:,:,1] * mask[:,:,2]).unsqueeze(-1)
+
+        mask = (torch.logical_or(torch.isinf(img),torch.isnan(img)))
+
+        # mask = torch.where(img == torch.tensor([0.0,0.0,0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([1.0]).to(device))
+        # mask = img > torch.tensor([0.0,0.0,0.0]).to(device)
+        # mask = (mask[:,:,0] * mask[:,:,1] * mask[:,:,2]).unsqueeze(-1)
+        img[mask]  = 0.0
+        view[mask] = 0.0
         N = 3*torch.sum(mask)
-        loss = self.l1(img*mask,view*mask)/N
+        # print("mask range: [{},{}]".format(torch.min(mask),torch.max(mask)))
+        # print("img range: [{},{}]".format(torch.min(img),torch.max(img)))
+        # print("view range: [{},{}]".format(torch.min(view),torch.max(view)))
+
+        loss = self.l1(img,view)/N
         if debug:
             print('rendered_img range: [{},{}]'.format(torch.min(img),torch.max(img)))
             print("mean: ", torch.mean(img))
             # plot_image(error.detach().cpu().numpy())
-            plot_image(img.detach().cpu().numpy())
-            plot_image(view.cpu().numpy())
+            plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+            plot_image(view.cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
             print("loss: ", loss)
         if not debug:
                 losses += loss
