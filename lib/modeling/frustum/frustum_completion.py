@@ -485,6 +485,8 @@ class FrustumCompletion(nn.Module):
             predicted_values = torch.clamp(predicted_values, -self.truncation, self.truncation)
         else:
             predicted_values = torch.clamp(predicted_values, 0.0, self.truncation)
+        
+
 
         loss = self.criterion_surface(predicted_values, ground_truth_values, reduction="none")
 
