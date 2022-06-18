@@ -143,21 +143,14 @@ class RGBLoss(torch.nn.Module):
 
         mask = (torch.logical_or(torch.isinf(img),torch.isnan(img)))
 
-        # mask = torch.where(img == torch.tensor([0.0,0.0,0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([1.0]).to(device))
-        # mask = img > torch.tensor([0.0,0.0,0.0]).to(device)
-        # mask = (mask[:,:,0] * mask[:,:,1] * mask[:,:,2]).unsqueeze(-1)
         img[mask]  = 0.0
         view[mask] = 0.0
         N = 3*torch.sum(mask)
-        # print("mask range: [{},{}]".format(torch.min(mask),torch.max(mask)))
-        # print("img range: [{},{}]".format(torch.min(img),torch.max(img)))
-        # print("view range: [{},{}]".format(torch.min(view),torch.max(view)))
 
         loss = self.l1(img,view)/N
         if debug:
             print('rendered_img range: [{},{}]'.format(torch.min(img),torch.max(img)))
             print("mean: ", torch.mean(img))
-            # plot_image(error.detach().cpu().numpy())
             plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
             plot_image(view.cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
             print("loss: ", loss)
