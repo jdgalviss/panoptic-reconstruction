@@ -133,7 +133,7 @@ class Front3D(torch.utils.data.Dataset):
             if "aux_views" in self.fields:
                 aux_views = []
                 cam_poses = []
-                aux_ids = ["0001", "0005", "0018", "0021"]
+                aux_ids = ["0001", "0005", "0018"]
                 for aux_img_id in aux_ids:
                     aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
                     aux_img = self.transforms["aux_views"](aux_img)
@@ -191,6 +191,7 @@ class Front3D(torch.utils.data.Dataset):
 
         transforms["aux_views"] = t2d.Compose([
             t2d.ToTensor(),
+            t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
         ])
 
         transforms["color"] = t2d.Compose([

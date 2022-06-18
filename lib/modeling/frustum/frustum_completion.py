@@ -485,6 +485,8 @@ class FrustumCompletion(nn.Module):
             predicted_values = torch.clamp(predicted_values, -self.truncation, self.truncation)
         else:
             predicted_values = torch.clamp(predicted_values, 0.0, self.truncation)
+        
+
 
         loss = self.criterion_surface(predicted_values, ground_truth_values, reduction="none")
 
@@ -595,8 +597,8 @@ class FrustumCompletion(nn.Module):
 
         # loss_weighted = loss_mean * config.MODEL.FRUSTUM3D.RGB_WEIGHT
 
-        rgb_values = torch.clamp(prediction.F, 0.0, 1.0)
-        rgb_prediction = Me.SparseTensor(rgb_values, prediction.C,
+        # rgb_values = torch.clamp(prediction.F, 0.0, 1.0)
+        rgb_prediction = Me.SparseTensor(prediction.F, prediction.C,
                                              coordinate_manager=prediction.coordinate_manager)
         # print(results.keys())
         geometry_prediction = results['geometry']
