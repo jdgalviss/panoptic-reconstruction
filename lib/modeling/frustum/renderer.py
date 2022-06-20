@@ -91,13 +91,15 @@ class Renderer(object):
         # view_matrix = homogeneous_transform(_T_GC2[:3,:3],_T_GC2[:3,-1].transpose(0,1).unsqueeze(0)).to(device)
         target_normals = loss_util.compute_normals_sparse(locs, vals, sdf.shape[2:], transform=torch.inverse(view_matrix))
 
-        raycast_color, _, _ = self.raycaster_rgbd(locs.to(device), vals.to(device), colors.contiguous().to(device), target_normals.to(device), view_matrix.to(device), intrinsics.to(device))
+        raycast_color, _, raycast_normal = self.raycaster_rgbd(locs.to(device), vals.to(device), colors.contiguous().to(device), target_normals.to(device), view_matrix.to(device), intrinsics.to(device))
         raycast_color = torch.fliplr(raycast_color[0]).unsqueeze(0)
+        raycast_normal = torch.fliplr(raycast_normal[0]).unsqueeze(0)
+
         # raycast_normal = torch.fliplr(raycast_normal[0]).unsqueeze(0)
 
         # print("\nrendered_image shape: {}".format(images.shape))
         # print("rendered_image shape: {}".format(images[0, ..., :3].shape))
         # raycast_color = torch.clamp(raycast_color,-1.0,1.0)
         
-        return raycast_color[0]      
+        return raycast_color[0], raycast_normal[0]     
         

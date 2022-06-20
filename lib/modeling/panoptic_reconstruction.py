@@ -191,4 +191,10 @@ class PanopticReconstruction(nn.Module):
             config.MODEL.FRUSTUM3D.IS_LEVEL_256 = False
             last_training_stage = "level_256"
 
+        # num_iterations += config.MODEL.FRUSTUM3D.LEVEL_ITERATIONS_RGB
+        # if iteration >= num_iterations and config.MODEL.FRUSTUM3D.IS_LEVEL_RGB:
+        #     self.training_stages["LEVEL-RGB"] = False
+        #     config.MODEL.FRUSTUM3D.IS_LEVEL_RGB = False
+        #     last_training_stage = "level_rgb"
+
         return last_training_stage

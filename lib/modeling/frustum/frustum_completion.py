@@ -602,10 +602,11 @@ class FrustumCompletion(nn.Module):
                                              coordinate_manager=prediction.coordinate_manager)
         # print(results.keys())
         geometry_prediction = results['geometry']
+        semantic_prediction = results['semantic3d']
         # print("\ngeometry_sparse shape: ", geometry_prediction.shape)
         # print("rgb_sparse shape: ", rgb_prediction.shape)
 
-        loss = self.rgb_loss(geometry_prediction, rgb_prediction, aux_views, cam_poses)*config.MODEL.FRUSTUM3D.RGB_WEIGHT
+        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses)*config.MODEL.FRUSTUM3D.RGB_WEIGHT
         return {"rgb": loss}, {"rgb": rgb_prediction}
 
 
