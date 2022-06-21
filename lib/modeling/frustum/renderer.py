@@ -19,7 +19,7 @@ import loss as loss_util
 
 truncation = 1.5
 device = torch.device(config.MODEL.DEVICE)
-input_dim = (128, 128, 128)
+input_dim = (254, 254, 254)
 batch_size = 1
 style_width = 320
 style_height = 240
@@ -44,9 +44,9 @@ def rot_z(t):
     return torch.FloatTensor([[cos(t),-sin(t),0],[sin(t),cos(t),0],[0,0,1]])
 
 class Renderer(object):
-    def __init__(self, camera_base_transform = None, voxelsize = 0.06):
+    def __init__(self, camera_base_transform = None, voxelsize = 0.0301):
         R0, t0 = look_at_view_transform(dist=-180, elev=0, azim=90)
-        t0 = torch.FloatTensor([[10.0,63.5,63.5]])
+        t0 = torch.FloatTensor([[20.0,128.0,127.0]])*254.0/255.0
         self.T_C1W = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
         if not camera_base_transform is None:
             self.T_GC1 = camera_base_transform.to(device)
@@ -57,8 +57,8 @@ class Renderer(object):
         self.voxelsize = voxelsize
 
     def set_base_camera_transform(self, T_GC1):
-        self.T_GC1 = T_GC1.to(device)
-        # self.T_GC1[:,:3,-1] = self.T_GC1[:,:3,-1]/voxelsize
+        self.T_GC1 = T_GC1.clone().to(device)
+        self.T_GC1[:,:3,-1] = self.T_GC1[:,:3,-1]/self.voxelsize
 
     # def create_pcl(self, points, points_rgb):
     #     point_cloud = Pointclouds(points=[points.type(torch.FloatTensor)], features=[points_rgb.type(torch.FloatTensor)]).to(device)
@@ -67,26 +67,27 @@ class Renderer(object):
 
 
     
-    def render_image(self, locs, vals, sdf, colors, T_GC2, offset = None, angle=None):
+    def render_image(self, locs, vals, sdf, colors, T, offset = None, angle=None):
 
         # Compute transform to auxiliary view
-        # print(T_GC2.shape)
-        # print(self.T_GC1.shape)
-        # print(self.T_C1W.shape)
-        T_GC2[:,:3,-1] = T_GC2[:,:3,-1]/self.voxelsize
+        T_GC2 = T.clone()
+        T_GC2[:,:3,-1] = T[:,:3,-1]/self.voxelsize
+        # print(T_GC2)
+        # print(self.T_GC1)
+        # print(self.T_C1W)
 
-        _T_GC2 = (torch.inverse(T_GC2[0]) @ self.T_GC1[0] @ self.T_C1W[0]).to(device)
+        T_GC2 = (torch.inverse(T_GC2[0]) @ self.T_GC1[0] @ self.T_C1W[0]).to(device)
 
         if not offset is None:
             # print(_T_GC2[:3,-1].shape)
             # print(offset.shape)
-            _T_GC2[:3,-1] += offset
+            T_GC2[:3,-1] += offset
         
         if not angle is None:
-            _T_GC2[:3,:3] = torch.matmul(rot_y(angle).to(device), _T_GC2[:3,:3])
+            T_GC2[:3,:3] = torch.matmul(rot_y(angle).to(device), _T_GC2[:3,:3])
 
-        _T_GC2 = _T_GC2.unsqueeze(0)
-        view_matrix = _T_GC2
+        T_GC2 = T_GC2.unsqueeze(0)
+        view_matrix = T_GC2
         
         # view_matrix = homogeneous_transform(_T_GC2[:3,:3],_T_GC2[:3,-1].transpose(0,1).unsqueeze(0)).to(device)
         target_normals = loss_util.compute_normals_sparse(locs, vals, sdf.shape[2:], transform=torch.inverse(view_matrix))
