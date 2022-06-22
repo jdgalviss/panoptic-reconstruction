@@ -1,5 +1,6 @@
 import os
 import sys
+from urllib.parse import _NetlocResultMixinStr
 import numpy as np
 from lib.config import config
 import torch
@@ -28,6 +29,7 @@ ray_increment = 0.003 * truncation
 thresh_sample_dist = 100.5 * ray_increment
 max_num_locs_per_sample = 640000
 intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
+num_views = 3
 
 def homogeneous_transform(R,t):
     last_row = torch.FloatTensor([[0,0,0,1]]).unsqueeze(0)
@@ -51,14 +53,17 @@ class Renderer(object):
         if not camera_base_transform is None:
             self.T_GC1 = camera_base_transform.to(device)
             # self.T_GC1[:,:3,-1] = self.T_GC1[:,:3,-1]/voxelsize
-        self.raycaster_rgbd = RaycastRGBD(batch_size, input_dim, style_width, style_height, depth_min=0.1/voxelsize, depth_max=raycast_depth_max/voxelsize, 
-                             thresh_sample_dist=thresh_sample_dist, ray_increment=ray_increment, max_num_locs_per_sample=max_num_locs_per_sample)
+        self.raycaster_rgbd = []
+        for i in range(num_views):
+            self.raycaster_rgbd.append(RaycastRGBD(batch_size, input_dim, style_width, style_height, depth_min=0.1/voxelsize, depth_max=raycast_depth_max/voxelsize, 
+                                    thresh_sample_dist=thresh_sample_dist, ray_increment=ray_increment, max_num_locs_per_sample=max_num_locs_per_sample))
+
         self.truncation = 1.5
         self.voxelsize = voxelsize
 
     def set_base_camera_transform(self, T_GC1):
-        self.T_GC1 = T_GC1.clone().to(device)
-        self.T_GC1[:,:3,-1] = self.T_GC1[:,:3,-1]/self.voxelsize
+        self.T_GC1 = T_GC1.to(device)
+        # self.T_GC1[:,:3,-1] = self.T_GC1[:,:3,-1]/self.voxelsize
 
     # def create_pcl(self, points, points_rgb):
     #     point_cloud = Pointclouds(points=[points.type(torch.FloatTensor)], features=[points_rgb.type(torch.FloatTensor)]).to(device)
@@ -67,40 +72,42 @@ class Renderer(object):
 
 
     
-    def render_image(self, locs, vals, sdf, colors, T, offset = None, angle=None):
+    def render_image(self, locs, vals, sdf, colors, cam_poses, offsets = None, angle=None):
 
         # Compute transform to auxiliary view
-        T_GC2 = T.clone()
-        T_GC2[:,:3,-1] = T[:,:3,-1]/self.voxelsize
+        # T_GC2 = T.clone()
+        # T_GC2[:,:3,-1] = T[:,:3,-1]/self.voxelsize
         # print(T_GC2)
         # print(self.T_GC1)
         # print(self.T_C1W)
+        view_matrices = []
+        for T, offset in zip(cam_poses, offsets):
+        # T_GC2 = (torch.inverse(T[0]) @ self.T_GC1[0] @ self.T_C1W[0]).to(device)
+            T_GC2 = torch.matmul(torch.matmul(torch.inverse(T[0]), self.T_GC1[0]), self.T_C1W[0])
+        # (torch.inverse(T[0]) @ self.T_GC1[0] @ self.T_C1W[0]).to(device)
 
-        T_GC2 = (torch.inverse(T_GC2[0]) @ self.T_GC1[0] @ self.T_C1W[0]).to(device)
 
-        if not offset is None:
-            # print(_T_GC2[:3,-1].shape)
-            # print(offset.shape)
-            T_GC2[:3,-1] += offset
-        
-        if not angle is None:
-            T_GC2[:3,:3] = torch.matmul(rot_y(angle).to(device), _T_GC2[:3,:3])
+            if not offset is None:
+                # print(_T_GC2[:3,-1].shape)
+                # print(offset.shape)
+                T_GC2[:3,-1] += offset
+            
+            if not angle is None:
+                T_GC2[:3,:3] = torch.matmul(rot_y(angle).to(device), T_GC2[:3,:3])
 
-        T_GC2 = T_GC2.unsqueeze(0)
-        view_matrix = T_GC2
-        
+            T_GC2 = T_GC2.unsqueeze(0)
+            view_matrices.append(T_GC2)
+        view_matrices = torch.cat(view_matrices).unsqueeze(1)
+        # locs = locs.unsqueeze(0).expand()
         # view_matrix = homogeneous_transform(_T_GC2[:3,:3],_T_GC2[:3,-1].transpose(0,1).unsqueeze(0)).to(device)
-        target_normals = loss_util.compute_normals_sparse(locs, vals, sdf.shape[2:], transform=torch.inverse(view_matrix))
+        color_imgs = []
+        normal_imgs = []
+        for i, view_matrix in enumerate(view_matrices):
+            target_normals = loss_util.compute_normals_sparse(locs, vals, sdf.shape[2:], transform=torch.inverse(view_matrix))
+            raycast_color, _, raycast_normal = self.raycaster_rgbd[i](locs.to(device), vals.to(device), colors.contiguous().to(device), target_normals.to(device), view_matrix.to(device), intrinsics.to(device))
+            color_imgs.append(torch.fliplr(raycast_color[0]).unsqueeze(0))
+            normal_imgs.append(torch.fliplr(raycast_normal[0]).unsqueeze(0))
 
-        raycast_color, _, raycast_normal = self.raycaster_rgbd(locs.to(device), vals.to(device), colors.contiguous().to(device), target_normals.to(device), view_matrix.to(device), intrinsics.to(device))
-        raycast_color = torch.fliplr(raycast_color[0]).unsqueeze(0)
-        raycast_normal = torch.fliplr(raycast_normal[0]).unsqueeze(0)
 
-        # raycast_normal = torch.fliplr(raycast_normal[0]).unsqueeze(0)
 
-        # print("\nrendered_image shape: {}".format(images.shape))
-        # print("rendered_image shape: {}".format(images[0, ..., :3].shape))
-        # raycast_color = torch.clamp(raycast_color,-1.0,1.0)
-        
-        return raycast_color[0], raycast_normal[0]     
-        
+        return torch.cat(color_imgs), torch.cat(normal_imgs)

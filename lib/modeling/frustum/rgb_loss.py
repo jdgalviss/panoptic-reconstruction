@@ -90,18 +90,23 @@ class RGBLoss(torch.nn.Module):
 
         # reverse one hot for semantic prediction
         semantic_idx = semantic_prediction.F.argmax(dim=1)
-        # print("semantic_idx: ", semantic_idx.shape)
-        # print("semantic idx values: ", np.unique(semantic_idx.detach().cpu().numpy()))
+        # print("semantic_prediction range: [{}, {}]".format(torch.min(semantic_prediction), torch.max(semantic_prediction)))
+        print("semantic_weights values: ", np.unique(semantic_idx.detach().cpu().numpy()))
+
+
+
 
 
         semantic_weights_sparse = weight_codes()[semantic_idx].to(device)
+        
         # print("semantic_weights_sparse: ", semantic_weights_sparse.shape)
 
         semantic_weights_sparse = Me.SparseTensor(semantic_weights_sparse, rgb_prediction.C, coordinate_manager=rgb_prediction.coordinate_manager)
         # print("semantic_weights_sparse_sparse: ", semantic_weights_sparse.shape)
 
         semantic_weights, _, _ = semantic_weights_sparse.dense(dense_dimensions, min_coordinates)
-        # print("semantic_weights range: [{}, {}]".format(semantic_weights.min(), semantic_weights.max()))
+        # print("semantic_weights values: ", np.unique(semantic_weights.detach().cpu().numpy()))
+
         # print("semantic_weights: ", semantic_weights.shape)
 
         
@@ -116,8 +121,6 @@ class RGBLoss(torch.nn.Module):
         sdf = (F.interpolate(sdf.unsqueeze(0).unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0,0]
         semantic_weights = (F.interpolate(semantic_weights.unsqueeze(0), size=(254,254,254), mode="nearest"))[0]
         # print("\ngeometry_dense shape: ", geometry.shape)
-        # print("shape:",(semantic_prediction.shape))
-        # print("semantic values: ", np.unique(semantic_weights.detach().cpu().numpy()))
         
 
 
@@ -139,96 +142,92 @@ class RGBLoss(torch.nn.Module):
         # print("colors range: [{}, {}] ".format(torch.max(colors), torch.min(colors)))
         colors = colors[locs[:,-1],locs[:,0],locs[:,1],locs[:,2],:].float() #/255.0
         semantic_weights = semantic_weights[locs[:,-1],locs[:,0],locs[:,1],locs[:,2],:].float() #/255.0
-        # print(surface_mask.shape)
-        # print(points_rgb.shape)
-        # print(points.shape)
 
-
-
-
-
-        # Generate mesh from voxel representation
-        # print("vertices shape: ", vertices.shape)
-        # print("vertices range: [{}, {}]".format(torch.max(vertices), torch.min(vertices)))
-        # print("faces shape: ", faces.shape)
-        # colors = torch.randn_like(colors)
-        # print("colors shape: ", colors.shape)
-        # print("colors range: [{}, {}] ".format(torch.max(colors), torch.min(colors)))
 
         # Render original view
+        cam_poses[:,:,:,:3,-1] /= 0.0301
         self.renderer.set_base_camera_transform(T_GC1=cam_poses[0][0])
         # renderer.set_base_camera_transform(cam_poses[0])
 
         ## TODO: fix offset
-        offsets = torch.FloatTensor([[0.0, 0.0, 0.0],[18.0,0.0,22.0],[20.0,0.0,11.5],]).to(device) #[111.0,0.0,165.0]
+        offsets = torch.FloatTensor([[0.0, 0.0, 0.0],[18.0,0.0,22.0],[20.0,0.0,11.5],]).to(device)*2.0 #[111.0,0.0,165.0]
         angles = torch.FloatTensor([0,0,0.0,0.0]).to(device)
         losses = torch.tensor(0.0).to(device)
-        # for T,view, offset, angle in zip(cam_poses[0], aux_views[0], offsets,angles):
-        #     img = self.renderer.render_image(locs, vals, sdf, colors, T, offset=offset, angle=None)
-        #     view = view.permute(1,2,0).to(device)
-        #     mask = torch.where(img == torch.tensor([0.0,0.0,0.0]).to(device), torch.tensor([0.0]).to(device), torch.tensor([1.0]).to(device))
-        #     mask = img > torch.tensor([0.0,0.0,0.0]).to(device)
-        #     mask = (mask[:,:,0] * mask[:,:,1] * mask[:,:,2]).unsqueeze(-1)
-        #     N = 3*torch.sum(mask)
-        #     loss = self.l1(img*mask,view*mask)/N
 
-        #     if debug:
-        #         print('rendered_img range: [{},{}]'.format(torch.min(img),torch.max(img)))
-        #         print("mean: ", torch.mean(img))
-        #         # plot_image(error.detach().cpu().numpy())
-        #         plot_image(img.detach().cpu().numpy())
-        #         plot_image(view.cpu().numpy())
-        #         print("loss: ", loss)
-        #     if not debug:
-        #         losses += loss
-
-        T = cam_poses[0,0]
-        view = aux_views[0,0]
-        offset = offsets[0]
-        angle = angles[0]
-
+        # For use with GAN loss
+        imgs = []
+        views = []
+        valids = []
+        weights = []
+        # for T,view, offset, angle in zip(cam_poses[0,1:], aux_views[0,1:], offsets[1:],angles[1:]):
         # print("semantic shape: ", semantic_weights.shape)
-
-
-        img, _ = self.renderer.render_image(locs, vals, sdf, colors, T, offset=offset, angle=None)
-        semantic_weights_img, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, T, offset=offset, angle=None)
-        # print("img range: [{},{}]".format(torch.min(img),torch.max(img)))
+        # return 0.0
+        imgs, _ = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], offsets=offsets, angle=None)
+        weights, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, cam_poses[0], offsets=offsets, angle=None)
         
 
-        view = view.permute(1,2,0).to(device)
+        masks = (torch.logical_or(torch.isinf(imgs),torch.isnan(imgs))).detach()
+        masks_semantic = (torch.logical_or(torch.isinf(weights),torch.isnan(weights))).detach()
 
-        mask = (torch.logical_or(torch.isinf(img),torch.isnan(img))).detach()
-        mask_semantic = (torch.logical_or(torch.isinf(semantic_weights_img),torch.isnan(semantic_weights_img))).detach()
+        views = aux_views[0].to(device)
+        views = views.permute(0,2,3,1)
+        views[masks] = 0.0
+        imgs[masks]  = 0.0
+        weights[masks_semantic] = 0.0
+        valids = torch.logical_not(masks)
+        if debug:
+            for img, weight, view, mask in zip(imgs,weights,views, masks):
+                plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+                plot_image(weight.detach().cpu().numpy())
+                # plot_image(np.float32(mask.detach().cpu().numpy()))
+                plot_image(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
 
+        
+        
 
-        img[mask]  = 0.0
-        view[mask] = 0.0
-        semantic_weights_img[mask_semantic] = 0.0
-        # print("semantic_weights_img range: [{},{}]".format(torch.min(semantic_weights_img),torch.max(semantic_weights_img)))
-        # print("semantic shape: ", semantic_weights_img.shape)
-        # print("semantic values: ", np.unique(semantic_weights_img.detach().cpu().numpy()))
-        # print("semantic: ", np.uniquesemantic_weights_img)
+        
+        # if debug:
+        #     plot_image(imgs[0].detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+        #     plot_image(weights[0].detach().cpu().numpy())
+        #     plot_image(views[0].cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+        # return 0.0
+        # print("imgs shape: ", imgs.shape)
+        # print("views shape: ", views.shape)
+        # print("valids shape: ", valids.shape)
+        # print("weights shape: ", weights.shape)
 
-        valid = torch.logical_not(mask)
-        num_valid = torch.sum(valid).item()
-        loss = torch.abs(img-view)*semantic_weights_img
-        # print("loss shape: ",loss.shape)
+        # L1-loss
+        weights = weights.detach()
+        num_valid = torch.sum(valids).item()
+        loss = torch.abs(imgs-views)*weights
+        # print("loss shape: ", loss.shape)
         loss = torch.sum(loss)/num_valid
-        # loss = self.l1(img,view)/num_valid
-
 
         ## Style Loss
-        style_loss, loss_content = self.compute_style_loss(img.permute(2,0,1).unsqueeze(0),view.permute(2,0,1).unsqueeze(0))
+        # style_loss, loss_content = self.compute_style_loss(imgs.permute(0,3,1,2),views.permute(0,3,1,2))
+
+        style_loss = torch.tensor(0.0).to(device)
+        loss_content = torch.tensor(0.0).to(device)
+
+        for i in range(3):
+            _style_loss, _loss_content = self.compute_style_loss(imgs.permute(0,3,1,2)[i].unsqueeze(0),views.permute(0,3,1,2)[i].unsqueeze(0))
+            style_loss += _style_loss
+            loss_content += _loss_content
 
         # GAN Loss
-
         self.optimizer_disc.zero_grad()
-        valid = valid.permute(2,0,1).unsqueeze(0)
+        valid = valids.permute(0,3,1,2)
         valid = (self.discriminator.compute_valids(valid[:,-1,:,:].float().unsqueeze(1)) > VALID_THRESH).squeeze(1)
-        weight_color_disc = None 
 
-        real_loss, fake_loss, penalty = self.gan_loss.compute_discriminator_loss(self.discriminator, view.permute(2,0,1).unsqueeze(0), 
-                                                                            img.permute(2,0,1).unsqueeze(0).detach(), valid, None )
+        # print("si")
+        # print(img.permute(2,0,1).unsqueeze(0).shape)
+        # print(imgs.permute(0,3,1,2).shape)
+        # img_fake = imgs.permute(0,3,1,2).detach()
+        with torch.no_grad():
+            img_fake = imgs.permute(0,3,1,2).clone()
+           
+        real_loss, fake_loss, penalty = self.gan_loss.compute_discriminator_loss(self.discriminator, views.permute(0,3,1,2), 
+                                                                           img_fake, valid, None )
 
         real_loss = torch.mean(real_loss)
         fake_loss = torch.mean(fake_loss)
@@ -237,46 +236,60 @@ class RGBLoss(torch.nn.Module):
         if not debug:
             disc_loss.backward()
             self.optimizer_disc.step()
+            
+        gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, imgs.permute(0,3,1,2))
 
-        gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, img.permute(2,0,1).unsqueeze(0))
-        # gen_loss = torch.clamp(gen_loss, min=0.0)
+        total_loss = (8.0*loss+(0.01*style_loss+loss_content*0.001+0.2*gen_loss))
 
+        if debug:
+            print("Total loss: ", total_loss)
+            print("L1 loss: ", loss)
+            print("style loss: ", style_loss)
+            print("loss_content: ", loss_content)
+            print("disc_loss: ", disc_loss)
+            print("gen_loss: ", gen_loss)
+
+        return total_loss
+                
 
         if debug:
             print('rendered_img range: [{},{}]'.format(torch.min(img),torch.max(img)))
             print("mean: ", torch.mean(img))
             plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
-            # plot_image(semantic_weights_img.detach().cpu().numpy())
+            plot_image(semantic_weights_img.detach().cpu().numpy())
             plot_image(view.cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
             print("L1 loss: ", loss)
             print("style loss: ", style_loss)
             print("loss_content: ", loss_content)
-            print("real_loss: ", real_loss)
-            print("fake_loss: ", fake_loss)
-            print("penalty: ", penalty)
-            print("disc_loss: ", disc_loss)
-            print("gen_loss: ", gen_loss)
+
 
         if not debug:
             # losses += (loss+0.1*style_loss+loss_content*0.1)
-            losses += (8.0*loss+0.01*style_loss+loss_content*0.001+0.1*gen_loss)
+            losses += (4.0*loss+0.01*style_loss+loss_content*0.001)
             # losses = torch.clamp(losses, min=0.0)
-        
-        if losses == -float('inf'):
-            print('rendered_img range: [{},{}]'.format(torch.min(img),torch.max(img)))
-            print("mean: ", torch.mean(img))
-            # plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
-            # plot_image(semantic_weights_img.detach().cpu().numpy())
-            # plot_image(view.cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
-            print("L1 loss: ", loss)
-            print("style loss: ", style_loss)
-            print("loss_content: ", loss_content)
-            print("real_loss: ", real_loss)
-            print("fake_loss: ", fake_loss)
-            print("penalty: ", penalty)
-            print("disc_loss: ", disc_loss)
-            print("gen_loss: ", gen_loss)
 
+
+        # views = torch.cat(views)
+        # imgs = torch.cat(imgs)
+        # valids = torch.cat(valids)
+        # self.optimizer_disc.zero_grad()
+        # real_loss, fake_loss, penalty = self.gan_loss.compute_discriminator_loss(self.discriminator, views, 
+        #                                                                         imgs, valids, None )
+        # real_loss = torch.mean(real_loss)
+        # fake_loss = torch.mean(fake_loss)
+        # disc_losses += (real_loss + fake_loss)
+        # gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, imgs)
+        # # gen_loss = torch.clamp(gen_loss, min=0.0)
+        
+        # if not debug:
+        #     disc_losses.backward()
+        #     self.optimizer_disc.step()
+        # else:
+        #         print("real_loss: ", real_loss)
+        #         print("fake_loss: ", fake_loss)
+        #         print("penalty: ", penalty)
+        #         print("disc_loss: ", disc_losses)
+        #         print("gen_loss: ", gen_loss)
 
         return losses
 
