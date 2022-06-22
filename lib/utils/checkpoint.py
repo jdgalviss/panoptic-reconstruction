@@ -27,6 +27,8 @@ class Checkpointer:
         if not self.output_path:
             return
 
+	os.makedirs(self.output_path, exist_ok=True)
+
         data = dict()
         data["model"] = self.model.state_dict()
 
