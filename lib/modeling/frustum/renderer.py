@@ -108,6 +108,4 @@ class Renderer(object):
             color_imgs.append(torch.fliplr(raycast_color[0]).unsqueeze(0))
             normal_imgs.append(torch.fliplr(raycast_normal[0]).unsqueeze(0))
 
-
-
         return torch.cat(color_imgs), torch.cat(normal_imgs)
