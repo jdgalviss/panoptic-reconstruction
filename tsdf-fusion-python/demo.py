@@ -8,7 +8,21 @@ os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
 import cv2
 import numpy as np
 
+import OpenEXR as exr
+import Imath
+
 import fusion
+
+def read_depth_exr_file(filepath: str):
+    "https://stackoverflow.com/questions/44630793/reading-exr-files-in-opencv"
+    exrfile = exr.InputFile(filepath)
+    raw_bytes = exrfile.channel('Z', Imath.PixelType(Imath.PixelType.FLOAT))
+    depth_vector = np.frombuffer(raw_bytes, dtype=np.float32)
+    height = exrfile.header()['displayWindow'].max.y + 1 - exrfile.header()['displayWindow'].min.y
+    width = exrfile.header()['displayWindow'].max.x + 1 - exrfile.header()['displayWindow'].min.x
+    depth_map = np.reshape(depth_vector, (height, width))
+    return depth_map
+
 
 
 if __name__ == "__main__":
@@ -25,7 +39,7 @@ if __name__ == "__main__":
   vol_bnds = np.zeros((3,2))
   for i in range(n_imgs):
     # Read depth image and camera pose
-    depth_im = cv2.imread("../data/front3d/70f7c6c1-c48f-4106-bcef-40b80b84bbad/depth_0001.exr").astype(float)
+    depth_im = read_depth_exr_file("../data/front3d/70f7c6c1-c48f-4106-bcef-40b80b84bbad/depth_0001.exr")
     #depth_im /= 1000.  # depth is saved in 16-bit PNG in millimeters
     #depth_im[depth_im == 65.535] = 0  # set invalid depth to 0 (specific to 7-scenes dataset)
     cam_pose = campose["camera2world"]  # 4x4 rigid transformation matrix
@@ -50,12 +64,10 @@ if __name__ == "__main__":
 
     # Read RGB-D image and camera pose
     color_image = cv2.cvtColor(cv2.imread("../data/front3d/70f7c6c1-c48f-4106-bcef-40b80b84bbad/rgb_0001.png"), cv2.COLOR_BGR2RGB)
-    depth_im = cv2.imread("../data/front3d/70f7c6c1-c48f-4106-bcef-40b80b84bbad/depth_0001.exr").astype(float)
+    depth_im = read_depth_exr_file("../data/front3d/70f7c6c1-c48f-4106-bcef-40b80b84bbad/depth_0001.exr")
     #depth_im /= 1000.
     #depth_im[depth_im == 65.535] = 0
     cam_pose = campose["camera2world"]
-    print(cam_pose)
-    depth_im = depth_im[:,:,0] # original has 3 same RGB values
 
     # Integrate observation into voxel volume (assume color aligned with depth)
     tsdf_vol.integrate(color_image, depth_im, cam_intr, cam_pose, obs_weight=1.)
