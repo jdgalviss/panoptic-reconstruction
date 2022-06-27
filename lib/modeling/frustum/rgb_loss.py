@@ -41,8 +41,6 @@ class RGBLoss(torch.nn.Module):
 
 
     def forward(self, geometry_prediction, rgb_prediction, aux_views, cam_poses, debug=False):
-    # def rgb_loss(geometry_prediction, rgb_prediction, aux_views, cam_poses):
-        # return 0.0
         dense_dimensions = torch.Size([1, 1] + config.MODEL.FRUSTUM3D.GRID_DIMENSIONS)
         min_coordinates = torch.IntTensor([0, 0, 0]).to(device)
         truncation = config.MODEL.FRUSTUM3D.TRUNCATION
@@ -51,33 +49,19 @@ class RGBLoss(torch.nn.Module):
         geometry, _, _ = geometry_prediction.dense(dense_dimensions, min_coordinates, default_value=truncation)
         rgb, _, _ = rgb_prediction.dense(dense_dimensions, min_coordinates)
 
-        geometry = geometry.unsqueeze(0)
-        rgb = rgb.squeeze()
+        geometry = geometry.unsqueeze(0) # shape: [1, 1, 256, 256, 256] -> [1, 1, 1, 256, 256, 256]
+        rgb = rgb.squeeze() # shape: [1, 3, 256, 256, 256] -> [3, 256, 256, 256]
 
-        # print("\ngeometry_dense shape: ", geometry.shape)
-        # print("rgb_dense shape: ", rgb.shape)
-
-        surface_mask = geometry.squeeze() < 1.0
-        points_rgb = rgb[:,surface_mask].transpose(0,1)
-        points = surface_mask.squeeze().nonzero()
-        points = points.type(torch.FloatTensor)
+        # why are only pixels closer than 1 meter considered?
+        surface_mask = geometry.squeeze() < 1.0 # shape: [256, 256, 256] of bool
+        points = surface_mask.nonzero().type(torch.FloatTensor) # indices of unmasked points (=coordinates)
+        points_rgb = rgb[:,surface_mask].transpose(0,1) # features (RGB colors) of the points, aligned with pints
+        
+        # some hacks?
         points*=0.03
         center = torch.FloatTensor([3.825+0.00,3.825-0.00,3.825-0.0])
         points-=center
-        # print(surface_mask.shape)
-        # print(points_rgb.shape)
-        # print(points.shape)
 
-
-
-
-
-        # Generate mesh from voxel representation
-        # print("vertices shape: ", vertices.shape)
-        # print("vertices range: [{}, {}]".format(torch.max(vertices), torch.min(vertices)))
-        # print("faces shape: ", faces.shape)
-        # print("colors shape: ", rgb.shape)
-        # print("colors range: [{}, {}] ".format(torch.max(rgb), torch.min(rgb)))
 
         # Render original view
         renderer = Renderer(camera_base_transform=cam_poses[0][0])
@@ -90,9 +74,9 @@ class RGBLoss(torch.nn.Module):
         angles = torch.FloatTensor([0,0,0.3,2.15]).to(device)
         losses = torch.tensor(0.0).to(device)
         for T,view, offset, angle in zip(cam_poses[0], aux_views[0], offsets,angles):
+            # render image from predicted geometry / rgb
             img = renderer.render_image(pcl, T, offset=offset, angle=angle)
-            # print('gt_view: {}'.format(view.shape))
-            # print('gt_view range: [{},{}]'.format(torch.min(view),torch.max(view)))
+            # original view
             view = view.permute(1,2,0).to(device)
             # mask for pixels outside view
             # print(img[120,180,:])
@@ -115,6 +99,8 @@ class RGBLoss(torch.nn.Module):
                 plot_image(img.detach().cpu().numpy())
                 plot_image(view.cpu().numpy())
                 print("loss: ", loss)
+                #print("cam_poses[0]\n", cam_poses[0])
+                #print(view)
             if not debug:
                 losses += loss
 
