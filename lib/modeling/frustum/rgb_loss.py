@@ -5,7 +5,7 @@ from .renderer import Renderer
 from .style import Model as StyleModel
 from .style import gram_matrix
 from .discriminator import Discriminator2D, GANLoss
-from .utils import weight_codes
+from .utils import weight_codes, create_color_palette
 import torchvision
 import torch
 import torch.nn as nn
@@ -91,13 +91,16 @@ class RGBLoss(torch.nn.Module):
         # reverse one hot for semantic prediction
         semantic_idx = semantic_prediction.F.argmax(dim=1)
         # print("semantic_prediction range: [{}, {}]".format(torch.min(semantic_prediction), torch.max(semantic_prediction)))
-        print("semantic_weights values: ", np.unique(semantic_idx.detach().cpu().numpy()))
+        # print("semantic_weights values: ", np.unique(semantic_idx.detach().cpu().numpy()))
 
 
 
 
 
-        semantic_weights_sparse = weight_codes()[semantic_idx].to(device)
+        if debug:
+            semantic_weights_sparse = create_color_palette()[semantic_idx].to(device)
+        else:
+            semantic_weights_sparse = weight_codes()[semantic_idx].to(device)
         
         # print("semantic_weights_sparse: ", semantic_weights_sparse.shape)
 
@@ -119,7 +122,7 @@ class RGBLoss(torch.nn.Module):
 
         rgb = (F.interpolate(rgb.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
         sdf = (F.interpolate(sdf.unsqueeze(0).unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0,0]
-        semantic_weights = (F.interpolate(semantic_weights.unsqueeze(0), size=(254,254,254), mode="nearest"))[0]
+        semantic_weights = (F.interpolate(semantic_weights.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
         # print("\ngeometry_dense shape: ", geometry.shape)
         
 
@@ -199,7 +202,10 @@ class RGBLoss(torch.nn.Module):
         # L1-loss
         weights = weights.detach()
         num_valid = torch.sum(valids).item()
-        loss = torch.abs(imgs-views)*weights
+        if debug:
+            loss = torch.abs(imgs-views)
+        else:
+            loss = torch.abs(imgs-views)*weights
         # print("loss shape: ", loss.shape)
         loss = torch.sum(loss)/num_valid
 
@@ -239,7 +245,7 @@ class RGBLoss(torch.nn.Module):
             
         gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, imgs.permute(0,3,1,2))
 
-        total_loss = (8.0*loss+(0.01*style_loss+loss_content*0.001+0.2*gen_loss))
+        total_loss = (8.0*loss+(0.01*style_loss+loss_content*0.002+1.0*gen_loss))
 
         if debug:
             print("Total loss: ", total_loss)
@@ -248,6 +254,7 @@ class RGBLoss(torch.nn.Module):
             print("loss_content: ", loss_content)
             print("disc_loss: ", disc_loss)
             print("gen_loss: ", gen_loss)
+            return 0.0
 
         return total_loss
                 
