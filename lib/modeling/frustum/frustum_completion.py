@@ -606,8 +606,9 @@ class FrustumCompletion(nn.Module):
         # print("\ngeometry_sparse shape: ", geometry_prediction.shape)
         # print("rgb_sparse shape: ", rgb_prediction.shape)
 
-        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses)*config.MODEL.FRUSTUM3D.RGB_WEIGHT
-        return {"rgb": loss}, {"rgb": rgb_prediction}
+        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses)
+        loss['rgb_total_loss']*=config.MODEL.FRUSTUM3D.RGB_WEIGHT
+        return loss, {"rgb": rgb_prediction}
 
 
     def mask_invalid_sparse_voxels(self, grid: Me.SparseTensor) -> Me.SparseTensor:

@@ -7,9 +7,13 @@ from lib.structures.field_list import collect
 
 from lib import utils, logger, config, modeling, solver, data
 
-
+import glob
+from datetime import datetime
+import os
+from torch.utils.tensorboard import SummaryWriter
+stages = ["64","128","256"]
 class Trainer:
-    def __init__(self):
+    def __init__(self, output_path: Path) -> None:
         self.model = None
         self.optimizer = None
         self.scheduler = None
@@ -18,7 +22,7 @@ class Trainer:
         self.logger = logger
         self.meters = utils.MetricLogger(delimiter="  ")
         self.checkpoint_arguments = {}
-
+        self.output_path = output_path
         self.setup()
 
     def setup(self) -> None:
@@ -40,8 +44,8 @@ class Trainer:
                                                   warmup_iters=0,
                                                   warmup_method="linear")
 
-        output_path = Path(config.OUTPUT_DIR)
-        self.checkpointer = utils.DetectronCheckpointer(self.model, self.optimizer, self.scheduler, output_path)
+        
+        self.checkpointer = utils.DetectronCheckpointer(self.model, self.optimizer, self.scheduler, self.output_path)
 
         # Load the checkpoint
         checkpoint_data = self.checkpointer.load()
@@ -71,6 +75,9 @@ class Trainer:
         iteration = 0
         iteration_end = time.time()
 
+        # Summary Writter
+        writer = SummaryWriter(log_dir=str(self.output_path / "tensorboard"))
+
         for idx, (image_ids, targets) in enumerate(self.dataloader):
             assert targets is not None, "error during data loading"
             data_time = time.time() - iteration_end
@@ -92,9 +99,21 @@ class Trainer:
 
             for loss_group in losses.values():
                 for loss_name, loss in loss_group.items():
+
                     if torch.is_tensor(loss) and not torch.isnan(loss) and not torch.isinf(loss):
-                        total_loss += loss
-                        log_meters[loss_name] = loss.item()
+                        if "256" in loss_name:
+                            writer.add_scalar('train_256/'+loss_name, loss.detach().cpu(), iteration)
+                        elif "128" in loss_name:
+                            writer.add_scalar('train_128/'+loss_name, loss.detach().cpu(), iteration)
+                        elif "64" in loss_name:
+                            writer.add_scalar('train_64/'+loss_name, loss.detach().cpu(), iteration)
+                        else:
+                            writer.add_scalar('train_full/'+loss_name, loss.detach().cpu(), iteration)
+                        if not ("dbg" in loss_name):
+                            total_loss += loss
+                            log_meters[loss_name] = loss.item()
+
+            writer.add_scalar('train/total_loss', total_loss.detach().cpu(), iteration)
 
             # Loss backpropagation, optimizer & scheduler step
             self.optimizer.zero_grad()
