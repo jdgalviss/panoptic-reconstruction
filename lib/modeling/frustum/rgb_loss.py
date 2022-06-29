@@ -128,7 +128,6 @@ class RGBLoss(torch.nn.Module):
         # Get Dense Predictions
         sdf, _, _ = geometry_prediction.dense(dense_dimensions, min_coordinates, default_value=truncation)
         rgb, _, _ = rgb_prediction.dense(dense_dimensions, min_coordinates)
-
         # reverse one hot for semantic prediction (semantic mask is used to add weights to color prediction loss for foreground objects)
         semantic_idx = semantic_prediction.F.argmax(dim=1)
         # print("semantic_prediction range: [{}, {}]".format(torch.min(semantic_prediction), torch.max(semantic_prediction)))
@@ -154,8 +153,11 @@ class RGBLoss(torch.nn.Module):
         semantic_weights = (F.interpolate(semantic_weights.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
 
         # TODO: Substraction of -1.5 only to have negative values in SDF, but distorts geometry.
-        truncation = 1.5
-        sdf -= 1.5
+        truncation = 3.0
+        if not config.MODEL.FRUSTUM3D.IS_SDF:
+            sdf -= 1.5
+            truncation = 1.5
+
         sdf = sdf.unsqueeze(0).unsqueeze(0)
         colors = rgb.permute(1,2,3,0).unsqueeze(0)
         semantic_weights = semantic_weights.permute(1,2,3,0).unsqueeze(0)
@@ -174,10 +176,10 @@ class RGBLoss(torch.nn.Module):
         self.renderer.set_base_camera_transform(T_GC1=cam_poses[0][0])
 
         ## TODO: fix offset - These offsets were calculated manually and should not be necessary
-        offsets = torch.FloatTensor([[0.0, -0.5, 0.0],[17.0,-0.5,21.5],[19.5,-0.5,11.7],]).to(device)*2.0 #[111.0,0.0,165.0]
+        offsets = torch.FloatTensor([[0.0, -0.7, 0.0],[17.0,-0.7,21.0],[19.5,-0.7,11.7],]).to(device)*2.0 #[111.0,0.0,165.0]
         angles = torch.FloatTensor([0,0,0.0,0.0]).to(device)
         losses = torch.tensor(0.0).to(device)
-
+        offsets = [None,None,None]
         # Render views and semantic weights masks for all the given camera poses
         imgs, normals = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], offsets=offsets, angle=None)
         weights, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, cam_poses[0], offsets=offsets, angle=None)
@@ -236,10 +238,10 @@ class RGBLoss(torch.nn.Module):
             self.optimizer_disc.step()
 
         # Generator Loss 
-        gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, imgs.permute(0,3,1,2))
+        gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, imgs.permute(0,3,1,2)) # TODDO: Move up?
 
         # Total Loss TODO: Define weights for each loss in config file
-        total_loss = (8.0*loss+(0.01*style_loss+loss_content*0.002+1.0*gen_loss))
+        total_loss = (4.0*loss+(0.02*style_loss+loss_content*0.001+1.0*gen_loss))
         losses = {"rgb_total_loss":total_loss, "rgb_reconstruction_loss_dbg":loss, "rgb_style_loss_dbg":style_loss, 
                   "rgb_content_loss_dbg":loss_content, "rgb_gen_loss_dbg":gen_loss, "rgb_disc_loss_dbg":disc_loss, "rgb_disc_real_loss_dbg":real_loss, "rgb_disc_fake_loss_dbg":fake_loss}
         
@@ -251,5 +253,6 @@ class RGBLoss(torch.nn.Module):
             print("disc_loss: ", disc_loss)
             print("gen_loss: ", gen_loss)
             return 0.0
+
 
         return losses

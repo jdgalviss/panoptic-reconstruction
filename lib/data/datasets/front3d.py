@@ -87,12 +87,15 @@ class Front3D(torch.utils.data.Dataset):
             needs_weighting = False
 
             if "geometry" in self.fields:
-                geometry_path = self.dataset_root_path / scene_id / f"geometry_sdf_{image_id}.npz"
-                # geometry_path = self.dataset_root_path / scene_id / f"geometry_{image_id}.npz"
-                geometry = np.load(geometry_path)["data"]
+                
+                if config.MODEL.FRUSTUM3D.IS_SDF:
+                    geometry_path = self.dataset_root_path / scene_id / f"geometry_sdf_{image_id}.npz"
+                    geometry = np.load(geometry_path)["arr_0"]
+                else:
+                    geometry_path = self.dataset_root_path / scene_id / f"geometry_{image_id}.npz"
+                    geometry = np.load(geometry_path)["data"]
                 geometry = np.ascontiguousarray(np.flip(geometry, axis=[0, 1]))  # Flip order, thanks for pointing that out.
                 geometry = self.transforms["geometry"](geometry)
-
                 # process hierarchy
                 sample.add_field("occupancy_256", self.transforms["occupancy_256"](geometry))
                 sample.add_field("occupancy_128", self.transforms["occupancy_128"](geometry))
