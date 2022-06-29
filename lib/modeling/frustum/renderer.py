@@ -29,7 +29,9 @@ raycast_depth_max = 6.0
 ray_increment = 0.003 * truncation
 thresh_sample_dist = 100.5 * ray_increment
 max_num_locs_per_sample = 640000
-intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
+# intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
+intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 160.0, 120.0]]).to(device)
+
 num_views = 3
 
 def homogeneous_transform(R,t):
@@ -60,8 +62,8 @@ class Renderer(object):
         voxel size of the SDF
     """
     def __init__(self, camera_base_transform = None, voxelsize = 0.0301):
-        R0, t0 = look_at_view_transform(dist=-180, elev=0, azim=90)
-        t0 = torch.FloatTensor([[20.0,128.0,127.0]])*254.0/255.0
+        R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
+        t0 = torch.FloatTensor([[22.5,127.0,127.0]])
         # Base Camera (original view) to Renderer World Transform
         self.T_C1W = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
         if not camera_base_transform is None:

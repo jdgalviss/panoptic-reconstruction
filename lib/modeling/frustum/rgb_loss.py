@@ -174,12 +174,12 @@ class RGBLoss(torch.nn.Module):
         self.renderer.set_base_camera_transform(T_GC1=cam_poses[0][0])
 
         ## TODO: fix offset - These offsets were calculated manually and should not be necessary
-        offsets = torch.FloatTensor([[0.0, 0.0, 0.0],[18.0,0.0,22.0],[20.0,0.0,11.5],]).to(device)*2.0 #[111.0,0.0,165.0]
+        offsets = torch.FloatTensor([[0.0, -0.5, 0.0],[17.0,-0.5,21.5],[19.5,-0.5,11.7],]).to(device)*2.0 #[111.0,0.0,165.0]
         angles = torch.FloatTensor([0,0,0.0,0.0]).to(device)
         losses = torch.tensor(0.0).to(device)
 
         # Render views and semantic weights masks for all the given camera poses
-        imgs, _ = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], offsets=offsets, angle=None)
+        imgs, normals = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], offsets=offsets, angle=None)
         weights, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, cam_poses[0], offsets=offsets, angle=None)
         
         masks = (torch.logical_or(torch.isinf(imgs),torch.isnan(imgs))).detach()
@@ -192,9 +192,11 @@ class RGBLoss(torch.nn.Module):
         weights[masks_semantic] = 0.0
         valids = torch.logical_not(masks)
         if debug:
-            for img, weight, view, mask in zip(imgs,weights,views, masks):
+            for img, weight, view, mask, normal in zip(imgs,weights,views, masks, normals):
                 plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
                 plot_image(weight.detach().cpu().numpy())
+                plot_image(normal.detach().cpu().numpy())
+
                 # plot_image(np.float32(mask.detach().cpu().numpy()))
                 plot_image(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
 

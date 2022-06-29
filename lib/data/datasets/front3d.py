@@ -87,7 +87,8 @@ class Front3D(torch.utils.data.Dataset):
             needs_weighting = False
 
             if "geometry" in self.fields:
-                geometry_path = self.dataset_root_path / scene_id / f"geometry_{image_id}.npz"
+                geometry_path = self.dataset_root_path / scene_id / f"geometry_sdf_{image_id}.npz"
+                # geometry_path = self.dataset_root_path / scene_id / f"geometry_{image_id}.npz"
                 geometry = np.load(geometry_path)["data"]
                 geometry = np.ascontiguousarray(np.flip(geometry, axis=[0, 1]))  # Flip order, thanks for pointing that out.
                 geometry = self.transforms["geometry"](geometry)
@@ -215,7 +216,7 @@ class Front3D(torch.utils.data.Dataset):
         transforms["geometry"] = t3d.Compose([
             t3d.ToTensor(dtype=torch.float),
             t3d.Unsqueeze(0),
-            t3d.ToTDF(truncation=12)
+            t3d.ToTSDF(truncation=12)
         ])
 
         transforms["geometry_truncate"] = t3d.ToTDF(truncation=self.truncation)
