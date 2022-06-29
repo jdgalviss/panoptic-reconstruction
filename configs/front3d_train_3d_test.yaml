@@ -1,8 +1,10 @@
 MODEL:
     FIX2D: True
-    PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
-    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/01_2022-06-2810_19_47.149715/model_final.pth"
-    ONLY_PANOPTIC_PRETRAINED: True
+    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
+    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/02_2022-06-2910_18_19.152368/model_final.pth"
+    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/01_2022-06-2810_19_47.149715/model_final.pth"
+
+    ONLY_PANOPTIC_PRETRAINED: False
 
     FIXNORM: True
 
