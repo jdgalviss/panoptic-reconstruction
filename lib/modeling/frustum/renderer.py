@@ -18,17 +18,9 @@ from utils.raycast_rgbd.raycast_rgbd import RaycastRGBD
 from math import sin, cos,pi
 import loss as loss_util
 
-# TODO: Read parameters from config file
-truncation = 1.5
 device = torch.device(config.MODEL.DEVICE)
-input_dim = (254, 254, 254)
-batch_size = 1
-style_width = 320
-style_height = 240
-raycast_depth_max = 6.0
-ray_increment = 0.003 * truncation
-thresh_sample_dist = 100.5 * ray_increment
-max_num_locs_per_sample = 640000
+
+
 # intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
 intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 160.0, 120.0]]).to(device)
 
@@ -61,7 +53,7 @@ class Renderer(object):
     voxelsize : float
         voxel size of the SDF
     """
-    def __init__(self, camera_base_transform = None, voxelsize = 0.0301):
+    def __init__(self, camera_base_transform = None, voxelsize = 0.0301, truncation=1.5):
         R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
         t0 = torch.FloatTensor([[22.5,127.0,127.0]])
         # Base Camera (original view) to Renderer World Transform
@@ -69,11 +61,26 @@ class Renderer(object):
         if not camera_base_transform is None:
             self.T_GC1 = camera_base_transform.to(device)
         self.raycaster_rgbd = []
+
+        # TODO: Read parameters from config file
+        input_dim = (254, 254, 254)
+        batch_size = 1
+        style_width = 320
+        style_height = 240
+        raycast_depth_max = 6.0
+        self.truncation = truncation
+        ray_increment = 0.003 * self.truncation
+        thresh_sample_dist = 100.5 * ray_increment
+        max_num_locs_per_sample = 640000
+
         for i in range(num_views):
             self.raycaster_rgbd.append(RaycastRGBD(batch_size, input_dim, style_width, style_height, depth_min=0.1/voxelsize, depth_max=raycast_depth_max/voxelsize, 
                                     thresh_sample_dist=thresh_sample_dist, ray_increment=ray_increment, max_num_locs_per_sample=max_num_locs_per_sample))
 
-        self.truncation = 1.5
+        self.target_normal_raycaster = RaycastRGBD(batch_size, input_dim, style_width, style_height, depth_min=0.1/voxelsize, depth_max=raycast_depth_max/voxelsize,
+                                    thresh_sample_dist=thresh_sample_dist, ray_increment=ray_increment, max_num_locs_per_sample=max_num_locs_per_sample)
+        
+
         self.voxelsize = voxelsize
 
     def set_base_camera_transform(self, T_GC1):
@@ -87,7 +94,7 @@ class Renderer(object):
         """
         self.T_GC1 = T_GC1.to(device)
     
-    def render_image(self, locs, vals, sdf, colors, cam_poses, offsets = None, angle=None):
+    def render_image(self, locs, vals, sdf, colors, cam_poses, rgb=None, target_sdf=None, offsets=None, angle=None):
         """
         Render a set of images from an SDF, Colors and a different camera poses
 
@@ -134,5 +141,23 @@ class Renderer(object):
             raycast_color, _, raycast_normal = self.raycaster_rgbd[i](locs.to(device), vals.to(device), colors.contiguous().to(device), target_normals.to(device), view_matrix.to(device), intrinsics.to(device))
             color_imgs.append(torch.fliplr(raycast_color[0]).unsqueeze(0))
             normal_imgs.append(torch.fliplr(raycast_normal[0]).unsqueeze(0))
+        
+        # Render target normal images which will be used for GAN loss
+        if not target_sdf is None:
+            # Don't compute normals for the target normals
+            with torch.no_grad(): 
+                target_normals = []
 
-        return torch.cat(color_imgs), torch.cat(normal_imgs)
+                target_locs = torch.nonzero(torch.abs(target_sdf[:,0]) < self.truncation)
+                target_locs = torch.cat([target_locs[:,1:], target_locs[:,:1]],1).contiguous()
+                target_vals = target_sdf[target_locs[:,-1],:,target_locs[:,0],target_locs[:,1],target_locs[:,2]].contiguous()
+                target_colors = rgb.permute(1,2,3,0).unsqueeze(0)[target_locs[:,-1],target_locs[:,0],target_locs[:,1],target_locs[:,2],:].float() #/255.0
+
+                for i, view_matrix in enumerate(view_matrices):
+                    normals = loss_util.compute_normals_sparse(target_locs, target_vals, target_sdf.shape[2:], transform=torch.inverse(view_matrix))
+                    _,_,target_normal = self.target_normal_raycaster(target_locs.to(device), target_vals.to(device), target_colors.contiguous().to(device), normals.to(device), view_matrix.to(device), intrinsics.to(device))
+                    target_normals.append(torch.fliplr(target_normal[0]).unsqueeze(0))
+
+            return torch.cat(color_imgs), torch.cat(normal_imgs), torch.cat(target_normals)
+
+        return torch.cat(color_imgs), torch.cat(normal_imgs), None

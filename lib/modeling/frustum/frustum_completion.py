@@ -568,6 +568,7 @@ class FrustumCompletion(nn.Module):
         # Grount truth
         aux_views = collect(targets, "aux_views")
         cam_poses = collect(targets, "cam_poses")
+        target_geometry = collect(targets, "geometry")
 
         # print("aux_views", aux_views.shape)
         # print("cam_poses", cam_poses.shape)
@@ -604,7 +605,7 @@ class FrustumCompletion(nn.Module):
         # print("\ngeometry_sparse shape: ", geometry_prediction.shape)
         # print("rgb_sparse shape: ", rgb_prediction.shape)
 
-        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses)
+        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses, target_geometry.clone())
         loss['rgb_total_loss']*=config.MODEL.FRUSTUM3D.RGB_WEIGHT
         return loss, {"rgb": rgb_prediction}
 

@@ -62,7 +62,7 @@ class RGBLoss(torch.nn.Module):
         self.model_style = StyleModel(model_style, _imagenet_stats["mean"], _imagenet_stats["std"])
 
         # GAN Loss
-        self.discriminator = Discriminator2D(nf_in=3, nf=8, patch_size=96, image_dims=(320, 240), patch=True, use_bias=True, disc_loss_type='vanilla').to(device)
+        self.discriminator = Discriminator2D(nf_in=6, nf=8, patch_size=96, image_dims=(320, 240), patch=True, use_bias=True, disc_loss_type='vanilla').to(device)
         self.optimizer_disc = torch.optim.Adam(self.discriminator.parameters(), lr=4*0.001, weight_decay=0.0)
         self.gan_loss = GANLoss(loss_type='vanilla')
 
@@ -98,7 +98,7 @@ class RGBLoss(torch.nn.Module):
                 loss += F.mse_loss(pred*10, tgt*10)
         return loss, loss_content
 
-    def forward(self, geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses, debug=False):
+    def forward(self, geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses, target_sdf, debug=False):
         """
         Compute the loss for the RGB prediction (colored geometry).
 
@@ -146,19 +146,24 @@ class RGBLoss(torch.nn.Module):
         rgb = rgb.squeeze()
         sdf = sdf.squeeze()
         semantic_weights = semantic_weights.squeeze()
+        target_sdf = target_sdf.squeeze()
 
         # Interpolate to size (254,254,254) to stay inside CUDA's limits
         rgb = (F.interpolate(rgb.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
         sdf = (F.interpolate(sdf.unsqueeze(0).unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0,0]
         semantic_weights = (F.interpolate(semantic_weights.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
+        target_sdf = (F.interpolate(target_sdf.unsqueeze(0).unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0,0]
+        
 
         # TODO: Substraction of -1.5 only to have negative values in SDF, but distorts geometry.
         truncation = 3.0
         if not config.MODEL.FRUSTUM3D.IS_SDF:
             sdf -= 1.5
+            target_sdf -= 1.5
             truncation = 1.5
 
         sdf = sdf.unsqueeze(0).unsqueeze(0)
+        target_sdf = target_sdf.unsqueeze(0).unsqueeze(0)
         colors = rgb.permute(1,2,3,0).unsqueeze(0)
         semantic_weights = semantic_weights.permute(1,2,3,0).unsqueeze(0)
 
@@ -179,10 +184,10 @@ class RGBLoss(torch.nn.Module):
         offsets = torch.FloatTensor([[0.0, -0.7, 0.0],[17.0,-0.7,21.0],[19.5,-0.7,11.7],]).to(device)*2.0 #[111.0,0.0,165.0]
         angles = torch.FloatTensor([0,0,0.0,0.0]).to(device)
         losses = torch.tensor(0.0).to(device)
-        offsets = [None,None,None]
+
         # Render views and semantic weights masks for all the given camera poses
-        imgs, normals = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], offsets=offsets, angle=None)
-        weights, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, cam_poses[0], offsets=offsets, angle=None)
+        imgs, normals, target_normals = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], rgb=rgb, target_sdf=target_sdf, offsets=offsets, angle=None)
+        weights, _, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, cam_poses[0], offsets=offsets, angle=None)
         
         masks = (torch.logical_or(torch.isinf(imgs),torch.isnan(imgs))).detach()
         masks_semantic = (torch.logical_or(torch.isinf(weights),torch.isnan(weights))).detach()
@@ -194,11 +199,11 @@ class RGBLoss(torch.nn.Module):
         weights[masks_semantic] = 0.0
         valids = torch.logical_not(masks)
         if debug:
-            for img, weight, view, mask, normal in zip(imgs,weights,views, masks, normals):
+            for img, weight, view, mask, normal, target_normal in zip(imgs,weights,views, masks, normals, target_normals):
                 plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
                 plot_image(weight.detach().cpu().numpy())
                 plot_image(normal.detach().cpu().numpy())
-
+                plot_image(target_normal.detach().cpu().numpy())
                 # plot_image(np.float32(mask.detach().cpu().numpy()))
                 plot_image(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
 
@@ -222,13 +227,27 @@ class RGBLoss(torch.nn.Module):
             loss_content += _loss_content
 
         # GAN Loss
+        # Render ground truth normals
         self.optimizer_disc.zero_grad()
-        valid = valids.permute(0,3,1,2)
+        target_normals[target_normals == -float('inf')] = 0.0
+        normals[normals == -float('inf')] = 0.0
+
+        # Targets
+        target2d = torch.cat([views, target_normals], 3)
+        target2d = target2d.permute(0,3,1,2)
+        # predictions
+        pred2d = torch.cat([imgs, normals], 3)
+        pred2d = pred2d.permute(0,3,1,2)
+
+        #valid
+        valid = pred2d.detach() != -float('inf')
+        # valid = valids.permute(0,3,1,2)
         valid = (self.discriminator.compute_valids(valid[:,-1,:,:].float().unsqueeze(1)) > VALID_THRESH).squeeze(1)
-        with torch.no_grad():
-            img_fake = imgs.permute(0,3,1,2).clone()
-        real_loss, fake_loss, penalty = self.gan_loss.compute_discriminator_loss(self.discriminator, views.permute(0,3,1,2), 
-                                                                           img_fake, valid, None )
+        # with torch.no_grad():
+        #     img_fake = imgs.permute(0,3,1,2).clone()
+        real_loss, fake_loss, penalty = self.gan_loss.compute_discriminator_loss(self.discriminator, target2d, 
+                                                                           pred2d.contiguous().detach(), valid, None )
+
         real_loss = torch.mean(real_loss)
         fake_loss = torch.mean(fake_loss)
         disc_loss = (real_loss + fake_loss)
@@ -238,10 +257,10 @@ class RGBLoss(torch.nn.Module):
             self.optimizer_disc.step()
 
         # Generator Loss 
-        gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, imgs.permute(0,3,1,2)) # TODDO: Move up?
+        gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, pred2d) # TODDO: Move up?
 
         # Total Loss TODO: Define weights for each loss in config file
-        total_loss = (4.0*loss+(0.02*style_loss+loss_content*0.001+1.0*gen_loss))
+        total_loss = (4.0*loss+(0.02*style_loss+loss_content*0.002+1.0*gen_loss))
         losses = {"rgb_total_loss":total_loss, "rgb_reconstruction_loss_dbg":loss, "rgb_style_loss_dbg":style_loss, 
                   "rgb_content_loss_dbg":loss_content, "rgb_gen_loss_dbg":gen_loss, "rgb_disc_loss_dbg":disc_loss, "rgb_disc_real_loss_dbg":real_loss, "rgb_disc_fake_loss_dbg":fake_loss}
         

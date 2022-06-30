@@ -149,7 +149,7 @@ class Trainer:
 
             self.logger.info(self.meters.delimiter.join([f"IT: {iteration:06d}", current_training_stage,
                                                          f"{str(self.meters)}", f"LR: {current_learning_rate}"]))
-
+            writer.add_scalar('train/lr', current_learning_rate, iteration)
             iteration += 1
             iteration_end = time.time()
 
