@@ -137,8 +137,13 @@ class Front3D(torch.utils.data.Dataset):
             if "aux_views" in self.fields:
                 aux_views = []
                 cam_poses = []
-                aux_ids = ["0001", "0005", "0018"]
-                for aux_img_id in aux_ids:
+                
+                views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
+                views_names = [image_id]
+                for view_name in views_list.readlines():
+                    views_names.append(view_name.replace('\n',''))
+
+                for aux_img_id in views_names:
                     aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
                     aux_img = self.transforms["aux_views"](aux_img)
                     # aux_image = t2d.ToTensor(aux_img)
@@ -146,7 +151,7 @@ class Front3D(torch.utils.data.Dataset):
                     aux_views.append(aux_img)
 
                     campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
-                    cam2world = np.load(campose_path)["camera2world"]
+                    cam2world = np.load(campose_path)["blender_matrix"]
                     cam_poses.append(torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0))
                 sample.add_field("aux_views", torch.stack(aux_views))
                 sample.add_field("cam_poses", torch.stack(cam_poses))

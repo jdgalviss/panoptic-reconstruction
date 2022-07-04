@@ -175,10 +175,10 @@ class RGBLoss(torch.nn.Module):
         semantic_weights = semantic_weights[locs[:,-1],locs[:,0],locs[:,1],locs[:,2],:].float() #/255.0
 
         # Divide translation vector in cam_poses by the voxel size
-        cam_poses[:,:,:,:3,-1] /= 0.0301
+        cam_poses[:,:,:,:3,-1] /= 0.03*256./254.
 
         # Set the base camera pose of the renderer (For the original view)
-        self.renderer.set_base_camera_transform(T_GC1=cam_poses[0][0])
+        self.renderer.set_base_camera_transform(T_pose1=cam_poses[0][0])
 
         ## TODO: fix offset - These offsets were calculated manually and should not be necessary
         offsets = torch.FloatTensor([[0.0, -0.7, 0.0],[17.0,-0.7,21.0],[19.5,-0.7,11.7],]).to(device)*2.0 #[111.0,0.0,165.0]
@@ -260,7 +260,7 @@ class RGBLoss(torch.nn.Module):
         gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, pred2d) # TODDO: Move up?
 
         # Total Loss TODO: Define weights for each loss in config file
-        total_loss = (4.0*loss+(0.02*style_loss+loss_content*0.002+1.0*gen_loss))
+        total_loss = (4.0*loss+(0.02*style_loss+loss_content*0.002+1.5*gen_loss))
         losses = {"rgb_total_loss":total_loss, "rgb_reconstruction_loss_dbg":loss, "rgb_style_loss_dbg":style_loss, 
                   "rgb_content_loss_dbg":loss_content, "rgb_gen_loss_dbg":gen_loss, "rgb_disc_loss_dbg":disc_loss, "rgb_disc_real_loss_dbg":real_loss, "rgb_disc_fake_loss_dbg":fake_loss}
         

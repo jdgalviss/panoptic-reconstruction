@@ -23,8 +23,7 @@ device = torch.device(config.MODEL.DEVICE)
 
 # intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
 intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 160.0, 120.0]]).to(device)
-
-num_views = 3
+num_views = 4
 
 def homogeneous_transform(R,t):
     last_row = torch.FloatTensor([[0,0,0,1]]).unsqueeze(0)
@@ -55,11 +54,13 @@ class Renderer(object):
     """
     def __init__(self, camera_base_transform = None, voxelsize = 0.0301, truncation=1.5):
         R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
-        t0 = torch.FloatTensor([[22.5,127.0,127.0]])
+        t0 = torch.FloatTensor([[0.0,127.0,127.0]])
         # Base Camera (original view) to Renderer World Transform
-        self.T_C1W = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
+        self.T_view1 = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
+        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.5],[0.0,1.0,0.0,-1.5],[0.0,0.0,1.0,20.0],[0.0,0.0,0.0,1.0]]).to(device)
+        self.T_view1[0] = self.T_view1[0] @ self.T_off
         if not camera_base_transform is None:
-            self.T_GC1 = camera_base_transform.to(device)
+            self.T_pose1 = camera_base_transform.to(device)
         self.raycaster_rgbd = []
 
         # TODO: Read parameters from config file
@@ -83,7 +84,7 @@ class Renderer(object):
 
         self.voxelsize = voxelsize
 
-    def set_base_camera_transform(self, T_GC1):
+    def set_base_camera_transform(self, T_pose1):
         """
         Set the base camera transform
         
@@ -92,7 +93,7 @@ class Renderer(object):
         T_GC1 : torch.Tensor
             4x4 transformation matrix from camera base to ground_scene frame for the original view (From the data)
         """
-        self.T_GC1 = T_GC1.to(device)
+        self.T_pose1 = T_pose1.to(device)
     
     def render_image(self, locs, vals, sdf, colors, cam_poses, rgb=None, target_sdf=None, offsets=None, angle=None):
         """
@@ -120,19 +121,15 @@ class Renderer(object):
         """
         # Compute view matrices for all the views from the camera poses
         view_matrices = []
-        for T, offset in zip(cam_poses, offsets):
-            # Compute the transformation from the camera pose of the aux view. to the Renderer World Frame
-            T_C2W = torch.matmul(torch.matmul(torch.inverse(T[0]), self.T_GC1[0]), self.T_C1W[0])
-            # Add offsets TODO: This should not be necessary
-            if not offset is None:
-                T_C2W[:3,-1] += offset
-            if not angle is None:
-                T_C2W[:3,:3] = torch.matmul(rot_y(angle).to(device), T_C2W[:3,:3])
-            T_C2W = T_C2W.unsqueeze(0)
-            view_matrices.append(T_C2W)
+        for T_pose2 in cam_poses:
+            # Compute the that takes from base camera pose to aux camera pose in the renderer world frame
+            T_diff2 = torch.inverse(self.T_pose1[0]) @ T_pose2[0]
+            # Offset fix, needed due to inversion in the sdf in the dataloader
+            T_diff2[:3,-1] *= torch.FloatTensor([-1,0,-1]).to(device)
+            view_matrix2 = (self.T_view1[0]@T_diff2).unsqueeze(0)
+            view_matrices.append(view_matrix2)
         # Get all the view matrices (transform from camera pose of the view to the world frame)
         view_matrices = torch.cat(view_matrices).unsqueeze(1)
-
         # Render color and normal images
         color_imgs = []
         normal_imgs = []

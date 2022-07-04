@@ -2,7 +2,7 @@ MODEL:
     FIX2D: True
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/02_2022-06-2910_18_19.152368/model_final.pth"
-    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/03_2022-06-3013_13_24.783288/model_final.pth"
+    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/04_2022-07-0412_02_00.574182/model_final.pth"
 
     ONLY_PANOPTIC_PRETRAINED: False
 
