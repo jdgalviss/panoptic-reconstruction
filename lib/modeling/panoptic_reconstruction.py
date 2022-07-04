@@ -80,9 +80,6 @@ class PanopticReconstruction(nn.Module):
             "intrinsic": intrinsic
         }
 
-        print("=================================")
-        print("input_img: {}".format(image.shape))
-
         # Inference 2d
         _, image_features = self.encoder2d(image)
 
@@ -105,10 +102,6 @@ class PanopticReconstruction(nn.Module):
         # Merge geometry, semantics & instances to panoptic output
         _, panoptic_result = self.postprocess(instance_result, frustum_result)
         results["panoptic"] = panoptic_result
-        print("results panoptic_instances: {}".format(results["panoptic"]["panoptic_instances"].shape))
-        print("results panoptic_semantics: {}".format(results["panoptic"]["panoptic_semantics"].shape))
-        print("results frustum_geometry: {}".format(results["frustum"]["geometry"].shape))
-
         return results
 
     def log_model_info(self) -> None:

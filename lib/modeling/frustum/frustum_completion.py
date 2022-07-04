@@ -631,7 +631,6 @@ class FrustumCompletion(nn.Module):
 
     def inference(self, frustum_results, frustum_mask):
         # downscale frustum_mask
-        print("======Sparse Generative Completion=======")
         frustum_mask_64 = F.max_pool3d(frustum_mask.float(), kernel_size=2, stride=4).bool()
         unet_output = self.model(frustum_results, 1, frustum_mask_64)
 
@@ -664,15 +663,14 @@ class FrustumCompletion(nn.Module):
                                           coordinate_manager=semantic_prediction.coordinate_manager)
 
         rgb_prediction = self.rgb_head(prediction_pruned)
-        rgb_values = torch.clamp(rgb_prediction.F, 0.0, 255.0)
-        rgb_prediction = Me.SparseTensor(rgb_values, rgb_prediction.C,
+        # rgb_values = torch.clamp(rgb_prediction.F, 0.0, 255.0)
+        rgb_prediction = Me.SparseTensor(rgb_prediction.F, rgb_prediction.C,
                                              coordinate_manager=rgb_prediction.coordinate_manager)
-
         frustum_result = {
             "geometry": surface_prediction,
             "instance3d": instance_labels,
             "semantic3d_label": semantic_labels,
-            "rgb": semantic_labels
+            "rgb": rgb_prediction
         }
 
         return frustum_result
