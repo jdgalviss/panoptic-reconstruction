@@ -52,7 +52,7 @@ class Renderer(object):
     voxelsize : float
         voxel size of the SDF
     """
-    def __init__(self, camera_base_transform = None, voxelsize = 0.0301, truncation=1.5):
+    def __init__(self, camera_base_transform = None, voxelsize = 0.03*254./256., truncation=1.5):
         R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
         t0 = torch.FloatTensor([[0.0,127.0,127.0]])
         # Base Camera (original view) to Renderer World Transform

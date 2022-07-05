@@ -105,12 +105,6 @@ class SparseProjection(nn.Module):
             # print("features: {}".format(features.shape))
             # print("image_features: {}".format(image_features.shape))
             sample_features.append(image_features)
-
-            # RGB Projection
-            flat_rgb = rgb[idx, :, depth_pixels_xy[:, 0], depth_pixels_xy[:, 1]]
-            flat_rgb = flat_rgb.permute(1, 0)
-            # print("flat_rgb: {}".format(flat_rgb.shape))
-            sample_features.append(flat_rgb)
             
 
             # instance features
@@ -142,7 +136,12 @@ class SparseProjection(nn.Module):
             sample_features.append(instance_features)
             # print("instance_features: {}".format(instance_features.shape))
             # print("instance_tensor: {}".format(instance_tensor.shape))
-
+            
+            # RGB Projection
+            flat_rgb = rgb[idx, :, depth_pixels_xy[:, 0], depth_pixels_xy[:, 1]]
+            flat_rgb = flat_rgb.permute(1, 0)
+            # print("flat_rgb: {}".format(flat_rgb.shape))
+            sample_features.append(flat_rgb)
 
             if sample_features:
                 sample_features = torch.cat(sample_features, dim=-1)

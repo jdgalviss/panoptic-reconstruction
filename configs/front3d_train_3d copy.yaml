@@ -1,3 +1,4 @@
+#TODO: try with these params
 MODEL:
     FIX2D: True
     PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
@@ -31,13 +32,13 @@ MODEL:
         COMPLETION_128_WEIGHT: 25.0
         COMPLETION_256_WEIGHT: 10.0
         L1_WEIGHT: 5.0
-        RGB_WEIGHT: 100.0
+        RGB_WEIGHT: 150.0
 
  
-        LEVEL_ITERATIONS_64: 1 # 10000
-        LEVEL_ITERATIONS_128: 2 # 25000
-        LEVEL_ITERATIONS_256: 3 #5000
-        LEVEL_ITERATIONS_RGB: 3 #5000  #TO DO: Implement. Right now it is unused
+        LEVEL_ITERATIONS_64: 500 # 10000
+        LEVEL_ITERATIONS_128: 1250 # 25000
+        LEVEL_ITERATIONS_256: 2500 #5000
+        LEVEL_ITERATIONS_RGB: 2500 #5000  #TO DO: Implement. Right now it is unused
 
 
         COMPLETION_VOXEL_WEIGHTING: True
@@ -61,7 +62,7 @@ DATASETS:
 
 DATALOADER:
     IMS_PER_BATCH: 1
-    MAX_ITER: 300 #300000
+    MAX_ITER: 6000 #300000
     SHUFFLE: True
     NUM_WORKERS: 4
 
@@ -69,7 +70,7 @@ SOLVER:
     BASE_LR: 0.0002
     BETA_1: 0.9
     BETA_2: 0.999
-    STEPS: (200, 250) #(100000, 150000)
-    CHECKPOINT_PERIOD: 300 #5000
+    STEPS: (4000, 5500) #(100000, 150000)
+    CHECKPOINT_PERIOD: 2000 #5000
     WEIGHT_DECAY: 0.0000001
-    EVALUATION_PERIOD: 300 #50000
+    EVALUATION_PERIOD: 2000 #50000

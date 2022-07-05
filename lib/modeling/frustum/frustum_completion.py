@@ -184,6 +184,13 @@ class FrustumCompletion(nn.Module):
 
         # Color
         color_prediction = predictions[3]
+        print("proxy_color shape: ", color_prediction.shape)
+        # color_ground_truth = collect(targets, "color3d_64") # TODO color ground truth images from different views for differential rendering
+        #color_loss, color_result = self.compute_color_64_loss(color_prediction, semantic_ground_truth, frustum_mask, weighting_mask) # Color loss
+
+        # Surface
+        surface_prediction = predictions[4]
+        print("proxy_surface shape: ", surface_prediction.shape)
         # color_ground_truth = collect(targets, "color3d_64") # TODO color ground truth images from different views for differential rendering
         #color_loss, color_result = self.compute_color_64_loss(color_prediction, semantic_ground_truth, frustum_mask, weighting_mask) # Color loss
 
@@ -284,7 +291,9 @@ class FrustumCompletion(nn.Module):
             hierarchy_results.update(semantic_result)
 
         rgb_prediction: Me.SparseTensor = predictions[3]
+
         if rgb_prediction is not None:
+            print("proxy_color 128 shape: ", rgb_prediction.shape)
             pass
             # rgb_ground_truth = collect(targets, "rgb_128")
             # rgb_loss, rgb_result = self.compute_rgb_128_loss(rgb_prediction, rgb_ground_truth, weighting_mask)
@@ -292,6 +301,17 @@ class FrustumCompletion(nn.Module):
             # hierarchy_losses.update(rgb_loss)
             # hierarchy_results.update(rgb_result)
 
+        surface_prediction: Me.SparseTensor = predictions[4]
+
+        if surface_prediction is not None:
+            print("proxy_color 128 shape: ", surface_prediction.shape)
+            pass
+            # rgb_ground_truth = collect(targets, "rgb_128")
+            # rgb_loss, rgb_result = self.compute_rgb_128_loss(rgb_prediction, rgb_ground_truth, weighting_mask)
+
+            # hierarchy_losses.update(rgb_loss)
+            # hierarchy_results.update(rgb_result)
+            
         return hierarchy_losses, hierarchy_results
 
     def compute_occupancy_128_loss(self, prediction: Me.SparseTensor, ground_truth: torch.Tensor,
