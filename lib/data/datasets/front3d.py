@@ -87,11 +87,15 @@ class Front3D(torch.utils.data.Dataset):
             needs_weighting = False
 
             if "geometry" in self.fields:
-                geometry_path = self.dataset_root_path / scene_id / f"geometry_{image_id}.npz"
-                geometry = np.load(geometry_path)["data"]
+                
+                if config.MODEL.FRUSTUM3D.IS_SDF:
+                    geometry_path = self.dataset_root_path / scene_id / f"geometry_sdf_{image_id}.npz"
+                    geometry = np.load(geometry_path)["arr_0"]
+                else:
+                    geometry_path = self.dataset_root_path / scene_id / f"geometry_{image_id}.npz"
+                    geometry = np.load(geometry_path)["data"]
                 geometry = np.ascontiguousarray(np.flip(geometry, axis=[0, 1]))  # Flip order, thanks for pointing that out.
                 geometry = self.transforms["geometry"](geometry)
-
                 # process hierarchy
                 sample.add_field("occupancy_256", self.transforms["occupancy_256"](geometry))
                 sample.add_field("occupancy_128", self.transforms["occupancy_128"](geometry))
@@ -133,8 +137,13 @@ class Front3D(torch.utils.data.Dataset):
             if "aux_views" in self.fields:
                 aux_views = []
                 cam_poses = []
-                aux_ids = ["0001", "0005", "0018"]
-                for aux_img_id in aux_ids:
+                
+                views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
+                views_names = [image_id]
+                for view_name in views_list.readlines():
+                    views_names.append(view_name.replace('\n',''))
+
+                for aux_img_id in views_names:
                     aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
                     aux_img = self.transforms["aux_views"](aux_img)
                     # aux_image = t2d.ToTensor(aux_img)
@@ -142,7 +151,7 @@ class Front3D(torch.utils.data.Dataset):
                     aux_views.append(aux_img)
 
                     campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
-                    cam2world = np.load(campose_path)["camera2world"]
+                    cam2world = np.load(campose_path)["blender_matrix"]
                     cam_poses.append(torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0))
                 sample.add_field("aux_views", torch.stack(aux_views))
                 sample.add_field("cam_poses", torch.stack(cam_poses))
@@ -215,7 +224,7 @@ class Front3D(torch.utils.data.Dataset):
         transforms["geometry"] = t3d.Compose([
             t3d.ToTensor(dtype=torch.float),
             t3d.Unsqueeze(0),
-            t3d.ToTDF(truncation=12)
+            t3d.ToTSDF(truncation=12)
         ])
 
         transforms["geometry_truncate"] = t3d.ToTDF(truncation=self.truncation)

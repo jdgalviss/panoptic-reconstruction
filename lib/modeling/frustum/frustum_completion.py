@@ -12,6 +12,8 @@ from lib.modeling.backbone import UNetSparse, GeometryHeadSparse, Classification
 from lib.structures.field_list import collect
 from lib.modeling.utils import ModuleResult
 from .rgb_loss import RGBLoss
+from lib.modeling.frustum.rgb_loss_proxy import RGBProxyLoss
+
 
 class FrustumCompletion(nn.Module):
     def __init__(self):
@@ -41,6 +43,9 @@ class FrustumCompletion(nn.Module):
         self.criterion_semantics = F.cross_entropy  #nn.CrossEntropyLoss(reduction="none")
         self.criterion_instances = F.cross_entropy  #nn.CrossEntropyLoss(reduction="none")
         self.rgb_loss = RGBLoss()
+        self.rgb_loss_64 = RGBProxyLoss(volume_size=64)
+        self.rgb_loss_128 = RGBProxyLoss(volume_size=128)
+
 
         self.truncation = config.MODEL.FRUSTUM3D.TRUNCATION
         self.frustum_dimensions = [256, 256, 256]
@@ -137,7 +142,6 @@ class FrustumCompletion(nn.Module):
         # print('-----------------------------------------')
         # print("predictions unet 0 len: ", len(predictions[0]))
         # print("predictions unet 0 shape: ", predictions[0].shape)
-
         weighting_256 = collect(targets, "weighting3d")
         losses_256, results_256, features_256 = self.forward_256(predictions[0], targets, weighting_256) # out of memory
 
@@ -147,8 +151,10 @@ class FrustumCompletion(nn.Module):
 
         # Output level -> Surface, Instances, Semantics
         losses_output, results_output = self.forward_output(features_256, targets, weighting_256)
+
         losses.update(losses_output)
         results.update(results_output)
+
         return losses, results
 
     def forward_64(self, predictions, targets, frustum_mask, weighting_mask) -> Tuple[Dict, Dict]:
@@ -182,12 +188,63 @@ class FrustumCompletion(nn.Module):
         hierarchy_losses.update(semantic_loss)
         hierarchy_results.update(semantic_result)
 
+
+        # Surface
+        aux_views = collect(targets, "aux_views")
+        cam_poses = collect(targets, "cam_poses")
+        surface_ground_truth = collect(targets, "geometry")
+
+        surface_prediction = predictions[4]
+        surface_loss, surface_result = self.compute_surface_64_loss(surface_prediction, surface_ground_truth.clone(), weighting_mask)
+        hierarchy_losses.update(surface_loss)
+        hierarchy_results.update(surface_result)
+
         # Color
-        color_prediction = predictions[3]
-        # color_ground_truth = collect(targets, "color3d_64") # TODO color ground truth images from different views for differential rendering
-        #color_loss, color_result = self.compute_color_64_loss(color_prediction, semantic_ground_truth, frustum_mask, weighting_mask) # Color loss
+        rgb_prediction = predictions[3]
+        color_loss, color_result = self.compute_color_64_loss(rgb_prediction, surface_prediction, aux_views, cam_poses) # Color loss
+        hierarchy_losses.update(color_loss)
+        hierarchy_results.update(color_result)
 
         return hierarchy_losses, hierarchy_results
+
+
+    def compute_color_64_loss(self, rgb_prediction: torch.Tensor, surface_prediction: torch.Tensor, 
+                            aux_views: torch.Tensor, cam_poses: torch.Tensor) -> Tuple[Dict, Dict]:
+        """
+        Computes the color loss for the 64x64 resolution.
+        """
+        loss_64 = self.rgb_loss_64(rgb_prediction, surface_prediction, aux_views.clone(), cam_poses.clone())
+        loss_64 *= config.MODEL.FRUSTUM3D.RGB_WEIGHT_64
+        return {"rgb_64": loss_64}, {"rgb_64": rgb_prediction}
+
+    def compute_surface_64_loss(self, prediction: torch.Tensor, ground_truth: torch.Tensor,
+                             weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
+        
+        ground_truth = (F.interpolate(ground_truth, size=(64,64,64), mode="trilinear", align_corners=True))
+        # weighting_mask = (F.interpolate(weighting_mask, size=(64,64,64), mode="trilinear", align_corners=True))
+        
+        predicted_coordinates = torch.nonzero(torch.abs(ground_truth[:,0]) < self.truncation).long()
+
+        ground_truth_values = modeling.get_sparse_values(ground_truth, predicted_coordinates)
+        prediction = modeling.get_sparse_values(prediction, predicted_coordinates)
+        predicted_values = prediction
+        if config.MODEL.FRUSTUM3D.IS_SDF:
+            predicted_values = torch.clamp(predicted_values, -self.truncation, self.truncation)
+        else:
+            predicted_values = torch.clamp(predicted_values, 0.0, self.truncation)
+
+        loss = self.criterion_surface(predicted_values, ground_truth_values, reduction="none")
+        
+        #weighting_values = modeling.get_sparse_values(weighting_mask, predicted_coordinates)
+        loss = loss #* weighting_values
+        if len(loss) > 0:
+            loss_mean = loss.mean()
+        else:
+            loss_mean = 0
+        loss_weighted = config.MODEL.FRUSTUM3D.L1_WEIGHT_64 * loss_mean
+        surface = predicted_values
+
+        return {"geometry_64": loss_weighted}, {"geometry_64": surface}
 
     def compute_occupancy_64_loss(self, prediction: torch.Tensor, ground_truth: torch.Tensor,
                                   mask: torch.Tensor, weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
@@ -283,16 +340,74 @@ class FrustumCompletion(nn.Module):
             hierarchy_losses.update(semantic_loss)
             hierarchy_results.update(semantic_result)
 
+        
+        # Surface at 128
+        surface_prediction: Me.SparseTensor = predictions[4]
+        surface_ground_truth = collect(targets, "geometry")
+        aux_views = collect(targets, "aux_views")
+        cam_poses = collect(targets, "cam_poses")
+        if surface_prediction is not None:
+            # Surface to dense tensor
+            dense_dimensions = torch.Size([1, 1] + config.MODEL.FRUSTUM3D.GRID_DIMENSIONS)
+            min_coordinates = torch.IntTensor([0, 0, 0]).to("cuda")
+            truncation = config.MODEL.FRUSTUM3D.TRUNCATION
+            surface_prediction, _, _ = surface_prediction.dense(dense_dimensions, min_coordinates, default_value=truncation)
+            # rgb_ground_truth = collect(targets, "rgb_128")
+            surface_loss, surface_result = self.compute_surface_128_loss(surface_prediction, surface_ground_truth.clone(), weighting_mask)
+            hierarchy_losses.update(surface_loss)
+            hierarchy_results.update(surface_result)
+            
+
         rgb_prediction: Me.SparseTensor = predictions[3]
-        if rgb_prediction is not None:
-            pass
+        if rgb_prediction is not None and surface_prediction is not None:
+            rgb_prediction, _, _ = rgb_prediction.dense(dense_dimensions, min_coordinates, default_value=truncation)
+
+            color_loss, color_result = self.compute_color_128_loss(rgb_prediction, surface_prediction, aux_views, cam_poses) # Color loss
             # rgb_ground_truth = collect(targets, "rgb_128")
             # rgb_loss, rgb_result = self.compute_rgb_128_loss(rgb_prediction, rgb_ground_truth, weighting_mask)
 
-            # hierarchy_losses.update(rgb_loss)
-            # hierarchy_results.update(rgb_result)
+            hierarchy_losses.update(color_loss)
+            hierarchy_results.update(color_result)
 
         return hierarchy_losses, hierarchy_results
+    
+    def compute_color_128_loss(self, rgb_prediction: torch.Tensor, surface_prediction: torch.Tensor, 
+                            aux_views: torch.Tensor, cam_poses: torch.Tensor) -> Tuple[Dict, Dict]:
+        """
+        Computes the color loss for the 128x128 resolution.
+        """
+        loss_128 = self.rgb_loss_128(rgb_prediction, surface_prediction, aux_views.clone(), cam_poses.clone())
+        loss_128 *= config.MODEL.FRUSTUM3D.RGB_WEIGHT_128
+        return {"rgb_128": loss_128}, {"rgb_128": rgb_prediction}
+        
+    def compute_surface_128_loss(self, prediction: torch.Tensor, ground_truth: torch.Tensor,
+                             weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
+
+        ground_truth = (F.interpolate(ground_truth, size=(128,128,128), mode="trilinear", align_corners=True))
+        # weighting_mask = (F.interpolate(weighting_mask, size=(64,64,64), mode="trilinear", align_corners=True))
+        
+        predicted_coordinates = torch.nonzero(torch.abs(ground_truth[:,0]) < self.truncation).long()
+
+        ground_truth_values = modeling.get_sparse_values(ground_truth, predicted_coordinates)
+        prediction = modeling.get_sparse_values(prediction, predicted_coordinates)
+        predicted_values = prediction
+        if config.MODEL.FRUSTUM3D.IS_SDF:
+            predicted_values = torch.clamp(predicted_values, -self.truncation, self.truncation)
+        else:
+            predicted_values = torch.clamp(predicted_values, 0.0, self.truncation)
+
+        loss = self.criterion_surface(predicted_values, ground_truth_values, reduction="none")
+        
+        # weighting_values = modeling.get_sparse_values(weighting_mask, predicted_coordinates)
+        loss = loss #* weighting_values
+        if len(loss) > 0:
+            loss_mean = loss.mean()
+        else:
+            loss_mean = 0
+        loss_weighted = config.MODEL.FRUSTUM3D.L1_WEIGHT_128 * loss_mean
+        surface = predicted_values
+
+        return {"geometry_128": loss_weighted}, {"geometry_128": surface}
 
     def compute_occupancy_128_loss(self, prediction: Me.SparseTensor, ground_truth: torch.Tensor,
                                    weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
@@ -485,8 +600,6 @@ class FrustumCompletion(nn.Module):
             predicted_values = torch.clamp(predicted_values, -self.truncation, self.truncation)
         else:
             predicted_values = torch.clamp(predicted_values, 0.0, self.truncation)
-        
-
 
         loss = self.criterion_surface(predicted_values, ground_truth_values, reduction="none")
 
@@ -570,6 +683,7 @@ class FrustumCompletion(nn.Module):
         # Grount truth
         aux_views = collect(targets, "aux_views")
         cam_poses = collect(targets, "cam_poses")
+        target_geometry = collect(targets, "geometry")
 
         # print("aux_views", aux_views.shape)
         # print("cam_poses", cam_poses.shape)
@@ -606,8 +720,9 @@ class FrustumCompletion(nn.Module):
         # print("\ngeometry_sparse shape: ", geometry_prediction.shape)
         # print("rgb_sparse shape: ", rgb_prediction.shape)
 
-        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses)*config.MODEL.FRUSTUM3D.RGB_WEIGHT
-        return {"rgb": loss}, {"rgb": rgb_prediction}
+        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses, target_geometry.clone())
+        loss['rgb_total_loss']*=config.MODEL.FRUSTUM3D.RGB_WEIGHT
+        return loss, {"rgb": rgb_prediction}
 
 
     def mask_invalid_sparse_voxels(self, grid: Me.SparseTensor) -> Me.SparseTensor:
@@ -631,7 +746,6 @@ class FrustumCompletion(nn.Module):
 
     def inference(self, frustum_results, frustum_mask):
         # downscale frustum_mask
-        print("======Sparse Generative Completion=======")
         frustum_mask_64 = F.max_pool3d(frustum_mask.float(), kernel_size=2, stride=4).bool()
         unet_output = self.model(frustum_results, 1, frustum_mask_64)
 
@@ -664,15 +778,14 @@ class FrustumCompletion(nn.Module):
                                           coordinate_manager=semantic_prediction.coordinate_manager)
 
         rgb_prediction = self.rgb_head(prediction_pruned)
-        rgb_values = torch.clamp(rgb_prediction.F, 0.0, 255.0)
-        rgb_prediction = Me.SparseTensor(rgb_values, rgb_prediction.C,
+        # rgb_values = torch.clamp(rgb_prediction.F, 0.0, 255.0)
+        rgb_prediction = Me.SparseTensor(rgb_prediction.F, rgb_prediction.C,
                                              coordinate_manager=rgb_prediction.coordinate_manager)
-
         frustum_result = {
             "geometry": surface_prediction,
             "instance3d": instance_labels,
             "semantic3d_label": semantic_labels,
-            "rgb": semantic_labels
+            "rgb": rgb_prediction
         }
 
         return frustum_result

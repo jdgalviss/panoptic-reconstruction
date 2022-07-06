@@ -178,10 +178,15 @@ class UNetBlockOuterSparse(UNetBlock):
             Me.MinkowskiConvolution(num_proxy_input_features, self.num_semantic_features, kernel_size=3, stride=1, bias=True, dimension=3)
         )
 
-        self.num_rgb_features = config.MODEL.FRUSTUM3D.NUM_CLASSES 
+        # self.num_rgb_features = config.MODEL.FRUSTUM3D.NUM_CLASSES 
         self.proxy_rgb_128_head = nn.Sequential(
             SparseBasicBlock(num_proxy_input_features, num_proxy_input_features, dimension=3),
             Me.MinkowskiConvolution(num_proxy_input_features, self.num_rgb_channels, kernel_size=3, stride=1, bias=True, dimension=3)
+        )
+
+        self.proxy_surface_128_head = nn.Sequential(
+            SparseBasicBlock(num_proxy_input_features, num_proxy_input_features, dimension=3),
+            Me.MinkowskiConvolution(num_proxy_input_features, 1, kernel_size=3, stride=1, bias=True, dimension=3)
         )
 
         # define decoder
@@ -189,6 +194,8 @@ class UNetBlockOuterSparse(UNetBlock):
         num_conv_input_features += self.num_instance_features
         num_conv_input_features += self.num_semantic_features
         num_conv_input_features += self.num_rgb_channels
+        num_conv_input_features += 1 #surface
+
 
         # num_conv_input_features += self.num_rgb_channels
 
@@ -253,15 +260,11 @@ class UNetBlockOuterSparse(UNetBlock):
 
         sparse, dense = processed.data
 
-        
-
         if sparse is not None:
             sparse = Me.SparseTensor(sparse.F, sparse.C, coordinate_manager=cm, tensor_stride=sparse.tensor_stride)
-            # print("sparse", sparse.shape)
         # proxy occupancy output
         if sparse is not None:
             proxy_output = self.proxy_occupancy_128_head(sparse)
-            # print("proxy_output: ", proxy_output.shape)
         else:
             proxy_output = None
 
@@ -269,17 +272,16 @@ class UNetBlockOuterSparse(UNetBlock):
 
         if should_concat:
             proxy_mask = (Me.MinkowskiSigmoid()(proxy_output).F > config.MODEL.FRUSTUM3D.SPARSE_THRESHOLD_128).squeeze(1)
-            # print("proxy_mask: ", proxy_mask.shape)
             # no valid voxels
             if proxy_mask.sum() == 0:
                 cat = None
                 proxy_instances = None
                 proxy_semantic = None
                 proxy_rgb = None
+                proxy_surface = None
 
             else:
                 sparse_pruned = Me.MinkowskiPruning()(sparse, proxy_mask)  # mask out invalid voxels
-                # print("sparse_pruned: ", sparse_pruned.shape)
                 if len(sparse_pruned.C) == 0:
                     return BlockContent([None, [proxy_output, None, None, None], dense], processed.encoding)
 
@@ -291,11 +293,14 @@ class UNetBlockOuterSparse(UNetBlock):
                 proxy_semantic = self.proxy_semantic_128_head(cat)
                 #color pproxy prediction
                 proxy_rgb = self.proxy_rgb_128_head(cat)
-
+                #surface proxy prediction
+                proxy_surface = self.proxy_surface_128_head(cat)
                 # Concat proxy outputs
                 cat = utils.sparse_cat_union(cat, proxy_instances)
                 cat = utils.sparse_cat_union(cat, proxy_semantic)
                 cat = utils.sparse_cat_union(cat, proxy_rgb)
+                cat = utils.sparse_cat_union(cat, proxy_surface)
+
 
 
             if not config.MODEL.FRUSTUM3D.IS_LEVEL_128 and proxy_output is not None:
@@ -309,11 +314,11 @@ class UNetBlockOuterSparse(UNetBlock):
             proxy_instances = None
             proxy_semantic = None
             proxy_rgb = None
+            proxy_surface = None
 
         if self.verbose:
             self.verbose = False
-
-        return BlockContent([output, [proxy_output, proxy_instances, proxy_semantic, proxy_rgb], dense], processed.encoding)
+        return BlockContent([output, [proxy_output, proxy_instances, proxy_semantic, proxy_rgb, proxy_surface], dense], processed.encoding)
 
 
 class UNetBlockInner(UNetBlock):
@@ -409,10 +414,18 @@ class UNetBlockHybridSparse(UNetBlockOuter):
             nn.Conv3d(num_inner_features * 2, 3, kernel_size=3, stride=1, padding=1, bias=True)
         )
 
+        self.proxy_surface_head = nn.Sequential(
+            ResNetBlock3d(num_inner_features * 2, num_inner_features * 2),
+            ResNetBlock3d(num_inner_features * 2, num_inner_features * 2),
+            nn.Conv3d(num_inner_features * 2, 1, kernel_size=3, stride=1, padding=1, bias=True)
+        )
+
         num_conv_input_features = num_outer_features
         num_conv_input_features += config.MODEL.INSTANCE2D.MAX + 1
         num_conv_input_features += config.MODEL.FRUSTUM3D.NUM_CLASSES
-        num_conv_input_features += 3
+        num_conv_input_features += 3 #self.rgb_channels
+        num_conv_input_features += 1
+
 
 
         self.decoder = nn.Sequential(
@@ -471,7 +484,12 @@ class UNetBlockHybridSparse(UNetBlockOuter):
         rgb_prediction = torch.masked_fill(rgb_prediction, frustum_mask.squeeze() == False, 0.0)
         rgb_prediction[:, 0] = torch.masked_fill(rgb_prediction[:, 0], frustum_mask.squeeze() == False, 1.0)
 
-        proxy_output = [proxy_output, instance_prediction, semantic_prediction, rgb_prediction]
+        #surface proxy
+        surface_prediction = self.proxy_surface_head(processed.data)
+        surface_prediction = torch.masked_fill(surface_prediction, frustum_mask.squeeze() == False, 0.0)
+        surface_prediction[:, 0] = torch.masked_fill(surface_prediction[:, 0], frustum_mask.squeeze() == False, 1.0)
+
+        proxy_output = [proxy_output, instance_prediction, semantic_prediction, rgb_prediction, surface_prediction]
 
         if not config.MODEL.FRUSTUM3D.IS_LEVEL_64:
             coordinates, _, _ = transforms3d.Sparsify()(dense_to_sparse_mask, features=processed.data)
@@ -487,6 +505,9 @@ class UNetBlockHybridSparse(UNetBlockOuter):
 
             if rgb_prediction is not None:
                 dense_features = torch.cat([dense_features, rgb_prediction], dim=1)
+
+            if surface_prediction is not None:
+                dense_features = torch.cat([dense_features, surface_prediction], dim=1)
 
             sparse_features = dense_features[locations[:, 0], :, locations[:, 1], locations[:, 2], locations[:, 3]]
 

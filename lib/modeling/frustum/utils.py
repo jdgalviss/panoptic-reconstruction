@@ -2,7 +2,7 @@ import torch
 
 def weight_codes():
     return torch.Tensor([
-        (0.2, 0.2, 0.2),        # FLOOR
+        (0.1, 0.1, 0.1),        # FLOOR
         (1.0, 1.0, 1.0),		# wall
         (1.0, 1.0, 1.0),		# floor
         (1.0, 1.0, 1.0), 		# cabinet: chair 
@@ -12,8 +12,8 @@ def weight_codes():
         (1.0, 1.0, 1.0),		# table
         (1.0, 1.0, 1.0),  		# door
         (1.0, 1.0, 1.0),		# window
-        (0.2, 0.2, 0.2),		# bookshelf: wall
-        (0.2, 0.2, 0.2),		# picture
+        (0.1, 0.1, 0.1),		# bookshelf: wall
+        (0.1, 0.1, 0.1),		# picture
         (1.0, 1.0, 1.0), 		# counter
         (1.0, 1.0, 1.0),
         (1.0, 1.0, 1.0),		# desk

@@ -26,7 +26,6 @@ class PostProcess(nn.Module):
             self.stuff_classes = []
 
     def forward(self, instance_data: Dict[str, torch.Tensor], frustum_data: Dict[str, Me.SparseTensor]) -> ModuleResult:
-        print("==========Post Process==========")
         # dense
         device = frustum_data["instance3d"].device
         dense_dimensions = torch.Size([1, 1] + config.MODEL.FRUSTUM3D.GRID_DIMENSIONS)
@@ -38,11 +37,6 @@ class PostProcess(nn.Module):
         instances, _, _ = frustum_data["instance3d"].dense(dense_dimensions, min_coordinates)
         semantics, _, _ = frustum_data["semantic3d_label"].dense(dense_dimensions, min_coordinates)
         rgb, _, _ = frustum_data["rgb"].dense(dense_dimensions, min_coordinates)
-
-        print("geometry: {}".format(geometry.shape))
-        print("instances: {}".format(instances.shape))
-        print("semantics: {}".format(semantics.shape))
-        print("rgb: {}".format(rgb.shape))
 
 
 
