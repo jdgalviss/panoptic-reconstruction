@@ -125,34 +125,36 @@ class RGBLoss(torch.nn.Module):
         sdf, _, _ = geometry_prediction.dense(dense_dimensions, min_coordinates, default_value=truncation)
         rgb, _, _ = rgb_prediction.dense(dense_dimensions, min_coordinates)
         # reverse one hot for semantic prediction (semantic mask is used to add weights to color prediction loss for foreground objects)
-        semantic_idx = semantic_prediction.F.argmax(dim=1)
+        # print("semantic_prediction shape: ",semantic_prediction.shape)
+        # semantic_idx = semantic_prediction.F.argmax(dim=1)
         # print("semantic_prediction range: [{}, {}]".format(torch.min(semantic_prediction), torch.max(semantic_prediction)))
+        # print("semantic_idx shape: ",semantic_idx.shape)
+        
         # print("semantic_weights values: ", np.unique(semantic_idx.detach().cpu().numpy()))
 
         # If debug create colored semantic labels, else, create the weights mask
-        if debug:
-            # semantic_weights_sparse = create_color_palette()[semantic_idx].to(device)
-            semantic_weights_sparse = weight_codes()[semantic_idx].to(device)
-
-        else:
-            semantic_weights_sparse = weight_codes()[semantic_idx].to(device)
+        
         
         # Get semantic weights Sparse Tensor and then transform to dense tensor (redundant?)
-        semantic_weights_sparse = Me.SparseTensor(semantic_weights_sparse, rgb_prediction.C, coordinate_manager=rgb_prediction.coordinate_manager)
-        semantic_weights, _, _ = semantic_weights_sparse.dense(dense_dimensions, min_coordinates)
+        # semantic_weights_sparse = Me.SparseTensor(semantic_weights_sparse, rgb_prediction.C, coordinate_manager=rgb_prediction.coordinate_manager)
+        # semantic_weights, _, _ = semantic_weights_sparse.dense(dense_dimensions, min_coordinates)
+
+        # print("semantic_weights shape: ",semantic_weights.shape)
         
         rgb = rgb.squeeze()
         sdf = sdf.squeeze()
-        semantic_weights = semantic_weights.squeeze()
+        # semantic_weights = semantic_weights.squeeze()
         target_sdf = target_sdf.squeeze()
+        print("semantic_prediction: ",semantic_prediction.shape)
 
         # Interpolate to size (254,254,254) to stay inside CUDA's limits
         rgb = (F.interpolate(rgb.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
         sdf = (F.interpolate(sdf.unsqueeze(0).unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0,0]
-        semantic_weights = (F.interpolate(semantic_weights.unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0]
+        semantic_prediction = (F.interpolate(semantic_prediction.float(), size=(254,254,254), mode="trilinear",align_corners=True))[0]
         target_sdf = (F.interpolate(target_sdf.unsqueeze(0).unsqueeze(0), size=(254,254,254), mode="trilinear", align_corners=True))[0,0]
-        
+        print("semantic_prediction: ",semantic_prediction.shape)
 
+        # return 0.0
         # TODO: Substraction of -1.5 only to have negative values in SDF, but distorts geometry.
         truncation = 3.0
         if not config.MODEL.FRUSTUM3D.IS_SDF:
@@ -165,14 +167,31 @@ class RGBLoss(torch.nn.Module):
         sdf = sdf.unsqueeze(0).unsqueeze(0)
         target_sdf = target_sdf.unsqueeze(0).unsqueeze(0)
         colors = rgb.permute(1,2,3,0).unsqueeze(0)
-        semantic_weights = semantic_weights.permute(1,2,3,0).unsqueeze(0)
+        semantic_prediction = semantic_prediction.permute(1,2,3,0).unsqueeze(0)
 
         # Obtain sparse tensor of sdf, colors and semantic weights
         locs = torch.nonzero(torch.abs(sdf[:,0]) < truncation)
         locs = torch.cat([locs[:,1:], locs[:,:1]],1).contiguous()
         vals = sdf[locs[:,-1],:,locs[:,0],locs[:,1],locs[:,2]].contiguous()
         colors = colors[locs[:,-1],locs[:,0],locs[:,1],locs[:,2],:].float() #/255.0
-        semantic_weights = semantic_weights[locs[:,-1],locs[:,0],locs[:,1],locs[:,2],:].float() #/255.0
+        semantic_prediction = semantic_prediction[locs[:,-1],locs[:,0],locs[:,1],locs[:,2],:].float() #/255.0
+
+        print("semantic_prediction: ",semantic_prediction.shape)
+        print("semantic_prediction: ",semantic_prediction[:,0].long().shape)
+        print("semantic_weights values: ", np.unique(semantic_prediction[:,0].long().detach().cpu().numpy()))
+
+        semantic_weights = weight_codes()[semantic_prediction[:,0].long()].to(device)
+
+        if debug:
+            # semantic_weights_sparse = create_color_palette()[semantic_idx].to(device)
+            semantic_weights = create_color_palette()[semantic_prediction[:,0].long()].to(device)
+        else:
+            semantic_weights = weight_codes()[semantic_prediction[:,0].long()].to(device)
+
+        print("semantic_weights: ",semantic_weights.shape)
+        print("semantic_weights values: ", np.unique(semantic_weights.detach().cpu().numpy()))
+
+        
 
         # Divide translation vector in cam_poses by the voxel size
         cam_poses[:,:,:,:3,-1] /= 0.03*256./254.
@@ -186,6 +205,8 @@ class RGBLoss(torch.nn.Module):
         losses = torch.tensor(0.0).to(device)
 
         # Render views and semantic weights masks for all the given camera poses
+        print("colors shape: ",colors.shape)
+        # return 0.0
         imgs, normals, target_normals = self.renderer.render_image(locs, vals, sdf, colors, cam_poses[0], rgb=rgb, target_sdf=target_sdf, offsets=offsets, angle=None)
         weights, _, _ = self.renderer.render_image(locs, vals, sdf, semantic_weights, cam_poses[0], offsets=offsets, angle=None)
         

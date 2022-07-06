@@ -1,21 +1,11 @@
-import os
-import sys
-from urllib.parse import _NetlocResultMixinStr
 import numpy as np
 from lib.config import config
 import torch
-import pytorch3d
 # Data structures and functions for rendering
 
-# from pytorch3d.structures import Meshes
-# from pytorch3d.renderer import Textures
-
 from pytorch3d.renderer import look_at_view_transform
-# import os
-# import sys
-# sys.path.append('/usr/src/app/spsg/torch')
 from utils.raycast_rgbd.raycast_rgbd import RaycastRGBD
-from math import sin, cos,pi
+from math import sin, cos
 import loss as loss_util
 
 device = torch.device(config.MODEL.DEVICE)
@@ -52,12 +42,12 @@ class Renderer(object):
     voxelsize : float
         voxel size of the SDF
     """
-    def __init__(self, camera_base_transform = None, voxelsize = 0.03*254./256., truncation=1.5):
+    def __init__(self, camera_base_transform = None, voxelsize = 0.03*254./256., truncation=3.0):
         R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
         t0 = torch.FloatTensor([[0.0,127.0,127.0]])
         # Base Camera (original view) to Renderer World Transform
         self.T_view1 = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
-        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.5],[0.0,1.0,0.0,-1.5],[0.0,0.0,1.0,20.0],[0.0,0.0,0.0,1.0]]).to(device)
+        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.5],[0.0,1.0,0.0,-2.0],[0.0,0.0,1.0,18.0],[0.0,0.0,0.0,1.0]]).to(device)
         self.T_view1[0] = self.T_view1[0] @ self.T_off
         if not camera_base_transform is None:
             self.T_pose1 = camera_base_transform.to(device)

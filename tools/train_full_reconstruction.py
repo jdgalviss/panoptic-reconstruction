@@ -33,7 +33,7 @@ def main() -> None:
     max_file = max(files)
     now = str(datetime.now()) # current date and time
     out_dir = config.OUTPUT_DIR + "{:02d}_{}".format(int(max_file.split('/')[-1].split('_')[0])+1, now.replace(' ','').replace(':','_'))
-    out_dir = 'output/01' #TODO: Temporary
+    # out_dir = 'output/01' #TODO: Temporary
     # os.mkdir(out_dir)
     print('Saving Experiment results to:', out_dir)
 
