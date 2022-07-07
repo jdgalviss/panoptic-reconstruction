@@ -116,7 +116,6 @@ class PostProcess(nn.Module):
             instance_mask = panoptic_instances == instance_id
             panoptic_semantics[instance_mask] = semantic_label
         
-        print("rgb: {}".format(rgb.shape))
         result = {"panoptic_instances": panoptic_instances, "panoptic_semantics": panoptic_semantics,
                   "panoptic_semantic_mapping": panoptic_semantic_mapping, "rgb": rgb}
 

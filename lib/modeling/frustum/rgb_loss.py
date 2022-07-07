@@ -260,7 +260,9 @@ class RGBLoss(torch.nn.Module):
         gen_loss = self.gan_loss.compute_generator_loss(self.discriminator, pred2d) # TODDO: Move up?
 
         # Total Loss TODO: Define weights for each loss in config file
-        total_loss = (8.0*loss+(0.01*style_loss+loss_content*0.001+0.75*gen_loss))
+        # total_loss = (8.0*loss+(0.01*style_loss+loss_content*0.001+0.75*gen_loss))
+        total_loss = config.MODEL.FRUSTUM3D.RGB_L1_WEIGHT * loss + config.MODEL.FRUSTUM3D.STYLE_WEIGHT * style_loss + config.MODEL.FRUSTUM3D.CONTENT_WEIGHT * loss_content + config.MODEL.FRUSTUM3D.GEN_WEIGHT * gen_loss
+
         losses = {"rgb_total_loss":total_loss, "rgb_reconstruction_loss_dbg":loss, "rgb_style_loss_dbg":style_loss, 
                   "rgb_content_loss_dbg":loss_content, "rgb_gen_loss_dbg":gen_loss, "rgb_disc_loss_dbg":disc_loss, "rgb_disc_real_loss_dbg":real_loss, "rgb_disc_fake_loss_dbg":fake_loss}
         

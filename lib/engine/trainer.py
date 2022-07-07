@@ -72,7 +72,7 @@ class Trainer:
         self.model.switch_training()
 
         # Main loop
-        iteration = 0
+        iteration = config.MODEL.ITERATION
         iteration_end = time.time()
 
         # Summary Writter

@@ -3,6 +3,7 @@ MODEL:
     PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/01_2022-06-2810_19_47.149715/model_final.pth"
     ONLY_PANOPTIC_PRETRAINED: True
+    USE_PRETRAINED: False
 
     FIXNORM: True
 
@@ -31,11 +32,17 @@ MODEL:
         COMPLETION_128_WEIGHT: 25.0
         COMPLETION_256_WEIGHT: 10.0
         L1_WEIGHT: 5.0
-        L1_WEIGHT_64: 5.0
-        L1_WEIGHT_128: 5.0
+        L1_WEIGHT_64: 1.0
+        L1_WEIGHT_128: 2.0
         RGB_WEIGHT: 50.0
-        RGB_WEIGHT_64: 1.0
-        RGB_WEIGHT_128: 2.5
+        RGB_WEIGHT_64: 0.5
+        RGB_WEIGHT_128: 5.0
+
+        # RGB WEIGHTS
+        RGB_L1_WEIGHT: 8.0
+        STYLE_WEIGHT: 0.001
+        CONTENT_WEIGHT: 0.001
+        GEN_WEIGHT: 0.75
  
         LEVEL_ITERATIONS_64: 500 # 10000
         LEVEL_ITERATIONS_128: 1250 # 25000

@@ -117,12 +117,22 @@ class Checkpointer:
         # Remove dicts of modules whose size has been modified to avoid conflicts
         pretrained_model = checkpoint.pop("model")
 
-        if config.MODEL.ONLY_PANOPTIC_PRETRAINED:
+        
+
+        if not config.MODEL.USE_PRETRAINED:
+            print("Not using pretrained panoptic model weights")
+            # Load only 2D weights
+            for key in model_dict.keys():
+                if not("2d" in key):
+                    try:
+                        pretrained_model.pop(key)
+                    except:
+                        print("Could not remove key: ", key)
+        elif config.MODEL.ONLY_PANOPTIC_PRETRAINED:
             pretrained_model.pop("frustum3d.model.model.encoder.0.conv1.kernel")
             pretrained_model.pop("frustum3d.model.model.encoder.0.downsample.0.kernel")
             pretrained_model.pop("frustum3d.model.model.decoder.0.kernel")
             pretrained_model.pop("frustum3d.model.model.submodule.decoder.0.kernel")
-
 
         # pretrained_dict.pop('')
         # print('\n\ncheckpont: ',checkpoint.pop("model").keys())

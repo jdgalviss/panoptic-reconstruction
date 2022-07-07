@@ -1,0 +1,79 @@
+MODEL:
+    FIX2D: True
+    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/19_2022-07-0619_08_23.274307/model_0004000.pth"
+    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/01_2022-06-2810_19_47.149715/model_final.pth"
+    ONLY_PANOPTIC_PRETRAINED: False
+    ITERATION: 4000
+
+    FIXNORM: True
+
+    DEPTH2D:
+        USE: True
+        FIX: True
+
+    INSTANCE2D:
+        USE: True
+        FIX: True
+
+    PROJECTION:
+        USE: True
+        SIGN_CHANNEL: True
+
+    FRUSTUM3D:
+        USE: True
+        FIX: False
+        TRUNCATION: 3.0
+        ISO_VALUE: 1.0
+        IS_SDF: False
+
+        SEMANTIC_WEIGHT: 5.0
+        INSTANCE_WEIGHT: 25.0
+        COMPLETION_WEIGHT: 50.0
+        COMPLETION_128_WEIGHT: 25.0
+        COMPLETION_256_WEIGHT: 10.0
+        L1_WEIGHT: 5.0
+        L1_WEIGHT_64: 5.0
+        L1_WEIGHT_128: 5.0
+        RGB_WEIGHT: 50.0
+        RGB_WEIGHT_64: 1.0
+        RGB_WEIGHT_128: 2.5
+ 
+        LEVEL_ITERATIONS_64: 1 # 10000
+        LEVEL_ITERATIONS_128: 2 # 25000
+        LEVEL_ITERATIONS_256: 3 #5000
+        LEVEL_ITERATIONS_RGB: 3 #5000  #TO DO: Implement. Right now it is unused
+
+
+        COMPLETION_VOXEL_WEIGHTING: True
+        COMPLETION_128_VOXEL_WEIGHTING: True
+        COMPLETION_256_VOXEL_WEIGHTING: True
+        SURFACE_VOXEL_WEIGHTING: True
+
+        SEMANTIC_VOXEL_WEIGHTING: False
+        INSTANCE_VOXEL_WEIGHTING: False
+
+DATASETS:
+    TRAIN: "Front3D_Train"
+    VAL: "Front3D_Validation"
+    TRAINVAL: "Front3D_Train"
+    TEST: "Front3D_Test"
+    NUM_TRAIN: 0
+    NUM_TEST: 100
+    NUM_VALIDATE: 50
+    OVERFITTING: False
+    FIELDS: ("color", "depth", "instance2d", "geometry", "instance3d", "semantic3d", "aux_views")
+
+DATALOADER:
+    IMS_PER_BATCH: 1
+    MAX_ITER: 3000 #300000
+    SHUFFLE: True
+    NUM_WORKERS: 4
+
+SOLVER:
+    BASE_LR: 0.000025
+    BETA_1: 0.9
+    BETA_2: 0.999
+    STEPS: (1500, 2400) #(100000, 150000)
+    CHECKPOINT_PERIOD: 1000 #5000
+    WEIGHT_DECAY: 0.000001
+    EVALUATION_PERIOD: 1000 #50000

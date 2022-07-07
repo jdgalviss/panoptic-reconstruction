@@ -1,5 +1,3 @@
-
-
 from utils.raycast_rgbd.raycast_rgbd import RaycastRGBD
 from pytorch3d.renderer import look_at_view_transform
 import torch
