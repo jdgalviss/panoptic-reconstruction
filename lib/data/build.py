@@ -8,7 +8,7 @@ from lib.utils.imports import import_file
 
 
 def setup_dataloader(dataset_name, is_train=True, start_iteration=0, is_iteration_based=True, shuffle=True,
-                     pin_memory=True) -> data.DataLoader:
+                     pin_memory=True, max_iter = config.DATALOADER.MAX_ITER) -> data.DataLoader:
     dataset = build_dataset(dataset_name)
 
     sampler = samplers.make_data_sampler(dataset, shuffle)

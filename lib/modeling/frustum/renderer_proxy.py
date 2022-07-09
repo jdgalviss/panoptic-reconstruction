@@ -16,7 +16,7 @@ class Renderer(object):
         R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
         t0 = torch.FloatTensor([[0.0, volume_size/2.0,volume_size/2.0]])
         self.T_view1 = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
-        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.5*volume_size/254.0],[0.0,1.0,0.0,-1.5*volume_size/254.0],[0.0,0.0,1.0,20.0*volume_size/254.0],[0.0,0.0,0.0,1.0]]).to(device)
+        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.0*volume_size/254.0],[0.0,1.0,0.0,-1.0*volume_size/254.0],[0.0,0.0,1.0,21.5*volume_size/254.0],[0.0,0.0,0.0,1.0]]).to(device)
         self.T_view1[0] = self.T_view1[0] @ self.T_off
 
         if not camera_base_transform is None:
@@ -26,9 +26,13 @@ class Renderer(object):
         # TODO: Read parameters from config file
         input_dim = (volume_size, volume_size, volume_size)
         batch_size = 1
-        style_width = int(320*volume_size/256.)
-        style_height = int(240*volume_size/256.)
-        self.intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 160.0, 120.0]]).to(device)
+        if volume_size != 254:
+            style_width = int(320*volume_size/256.)
+            style_height = int(240*volume_size/256.)
+        else:
+            style_width = 320
+            style_height = 240
+        self.intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 159.0, 119.0]]).to(device)
 
         self.intrinsics *= volume_size/256
         raycast_depth_max = 6.0

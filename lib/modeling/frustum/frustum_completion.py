@@ -79,7 +79,7 @@ class FrustumCompletion(nn.Module):
         # Color head
         self.rgb_head = ColorHeadSparse(config.MODEL.FRUSTUM3D.UNET_OUTPUT_CHANNELS,
                                                       3,
-                                                      config.MODEL.FRUSTUM3D.SEMANTIC_HEAD.RESNET_BLOCKS)
+                                                      config.MODEL.FRUSTUM3D.RGB_HEAD.RESNET_BLOCKS)
         self.rgb_head = self.rgb_head.to(device)
 
     def forward(self, frustum_features: Me.SparseTensor, targets) -> ModuleResult:

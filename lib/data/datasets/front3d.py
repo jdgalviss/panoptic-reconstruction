@@ -16,9 +16,23 @@ from lib.structures import FieldList
 from lib.config import config
 from lib.utils.intrinsics import adjust_intrinsic
 import torch
+from skimage import io, color
 
 _imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
 
+class ToLAB(object):
+    """Convert RGB image to LAB."""
+    def __int__(self):
+        print("ToLab")
+
+    def __call__(self, rgb):
+        """
+        Args:
+            rgb (np.array): RGB image array.
+        Returns:
+            np.array: LAB image array.
+        """
+        return color.rgb2lab(rgb)
 
 class Front3D(torch.utils.data.Dataset):
     def __init__(self, file_list_path: os.PathLike, dataset_root_path: os.PathLike, fields: List[str],
@@ -197,11 +211,16 @@ class Front3D(torch.utils.data.Dataset):
         transforms = dict()
 
         # 2D transforms
-
-        transforms["aux_views"] = t2d.Compose([
-            t2d.ToTensor(),
-            t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
-        ])
+        if config.MODEL.COLOR_SPACE == "RGB":
+            transforms["aux_views"] = t2d.Compose([
+                t2d.ToTensor(),
+                t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
+            ])
+        elif config.MODEL.COLOR_SPACE == "LAB":
+            transforms["aux_views"] = t2d.Compose([
+                ToLAB(),
+                t2d.ToTensor(),
+            ])
 
         transforms["color"] = t2d.Compose([
             t2d.ToTensor(),

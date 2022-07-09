@@ -154,13 +154,13 @@ class RGBLoss(torch.nn.Module):
         
 
         # TODO: Substraction of -1.5 only to have negative values in SDF, but distorts geometry.
-        truncation = 3.0
+        truncation = 2.0
         if not config.MODEL.FRUSTUM3D.IS_SDF:
-            sdf -= 1.5
-            target_sdf -= 1.5
-            target_sdf *= 2.0
-            sdf *= 2.0
-            truncation = 3.0
+            sdf -= 1.0
+            target_sdf -= 1.0
+            # target_sdf *= 2.0
+            # sdf *= 2.0
+            truncation = 2.0
 
         sdf = sdf.unsqueeze(0).unsqueeze(0)
         target_sdf = target_sdf.unsqueeze(0).unsqueeze(0)
@@ -206,6 +206,8 @@ class RGBLoss(torch.nn.Module):
                 plot_image(target_normal.detach().cpu().numpy())
                 # plot_image(np.float32(mask.detach().cpu().numpy()))
                 plot_image(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+
+                plot_image(0.3*target_normal.detach().cpu().numpy()+0.7*(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean']))
 
         # Compute Losses
         # L1-loss
