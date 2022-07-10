@@ -16,6 +16,7 @@ from lib.structures import FieldList
 from lib.config import config
 from lib.utils.intrinsics import adjust_intrinsic
 import torch
+import ast
 
 _imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
 
@@ -83,6 +84,35 @@ class Front3D(torch.utils.data.Dataset):
                 instance2d = self.transforms["instance2d"](segmentation2d)
                 sample.add_field("instance2d", instance2d)
 
+            # Additional views
+            if "aux_views" in self.fields:
+                additional = [] # list of (campose, rgb, normals). Has length 7 (original + original newly rendered + 5 additional); if not enough additional poses, original view is copied
+                rgb = Image.open(self.dataset_root_path / scene_id / f"rgb_{image_id}.png", formats=["PNG"])
+                rgb = self.transforms["aux_views"](rgb)
+                normals = None
+                campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
+                cam2world = np.load(campose_path)["blender_matrix"]
+                matrix = torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0)
+                additional.append((rgb, normals, matrix))
+                try:
+                    with open(self.dataset_root_path / scene_id / "additional" / f"views_{image_id}.txt") as f:
+                        for line in f.readlines():
+                            rgb = Image.open(self.dataset_root_path / scene_id / "additional" / f"rgb_{line}.png", formats=["PNG"])
+                            rgb = self.transforms["aux_views"](rgb)
+                            normals = pyexr.read(str(self.dataset_root_path / scene_id / f"normals_{line}.exr")).squeeze()[::-1, ::-1].copy()
+                            campose_loaded = np.load(str(self.dataset_root_path / scene_id / "additional" / f"campose_{line}.npy"))
+                            cam2world = ast.literal_eval(campose_loaded[()].decode('utf-8'))[0]["matrix"]
+                            matrix = torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0)
+                            additional.append((matrix, rgb, normals))
+                except Exception as e:
+                    pass
+                while len(additional) < 7:
+                    additional.append(additional[0])
+                sample.add_field("aux_views", torch.stack([aux for (_,aux,_) in additional]))
+                sample.add_field("cam_poses", torch.stack([cp for (cp,_,_) in additional]))
+
+                
+
             # 3D data
             needs_weighting = False
 
@@ -134,27 +164,27 @@ class Front3D(torch.utils.data.Dataset):
                     sample.add_field("instance3d_64", self.transforms["segmentation3d_64"](instance3d))
                     sample.add_field("instance3d_128", self.transforms["segmentation3d_128"](instance3d))
             
-            if "aux_views" in self.fields:
-                aux_views = []
-                cam_poses = []
+            # if "aux_views" in self.fields:
+            #     aux_views = []
+            #     cam_poses = []
                 
-                views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
-                views_names = [image_id]
-                for view_name in views_list.readlines():
-                    views_names.append(view_name.replace('\n',''))
+            #     views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
+            #     views_names = [image_id]
+            #     for view_name in views_list.readlines():
+            #         views_names.append(view_name.replace('\n',''))
 
-                for aux_img_id in views_names:
-                    aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
-                    aux_img = self.transforms["aux_views"](aux_img)
-                    # aux_image = t2d.ToTensor(aux_img)
-                    # print("aux_image range: [{},{}]".format(torch.min(aux_img), torch.max(aux_img)))
-                    aux_views.append(aux_img)
+            #     for aux_img_id in views_names:
+            #         aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
+            #         aux_img = self.transforms["aux_views"](aux_img)
+            #         # aux_image = t2d.ToTensor(aux_img)
+            #         # print("aux_image range: [{},{}]".format(torch.min(aux_img), torch.max(aux_img)))
+            #         aux_views.append(aux_img)
 
-                    campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
-                    cam2world = np.load(campose_path)["blender_matrix"]
-                    cam_poses.append(torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0))
-                sample.add_field("aux_views", torch.stack(aux_views))
-                sample.add_field("cam_poses", torch.stack(cam_poses))
+            #         campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
+            #         cam2world = np.load(campose_path)["blender_matrix"]
+            #         cam_poses.append(torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0))
+            #     sample.add_field("aux_views", torch.stack(aux_views))
+            #     sample.add_field("cam_poses", torch.stack(cam_poses))
 
 
             if needs_weighting:
