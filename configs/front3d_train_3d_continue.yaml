@@ -32,7 +32,7 @@ MODEL:
         IS_SDF: False
         NUM_VIEWS: 1
         ENHANCE_CONTRAST: True
-
+        SEPARATE_ENCODER: False
 
         SEMANTIC_WEIGHT: 5.0
         INSTANCE_WEIGHT: 25.0
