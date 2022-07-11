@@ -4,6 +4,10 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from lib.config import config
+
+
+device = torch.device(config.MODEL.DEVICE)
 
 
 def count_num_model_params(model):
@@ -120,16 +124,16 @@ class GANLoss:
         if valid is not None:
             d_real = d_real[valid]
             d_fake = d_fake[valid]
-        real_loss = torch.nn.functional.binary_cross_entropy_with_logits(d_real, torch.ones(d_real.shape).cuda()*label_smoothing_factor, reduction='none')
+        real_loss = torch.nn.functional.binary_cross_entropy_with_logits(d_real, torch.ones(d_real.shape).to(device)*label_smoothing_factor, reduction='none')
         real_loss = torch.mean(real_loss, 1)
-        fake_loss = torch.nn.functional.binary_cross_entropy_with_logits(d_fake, torch.zeros(d_fake.shape).cuda(), reduction='none')
+        fake_loss = torch.nn.functional.binary_cross_entropy_with_logits(d_fake, torch.zeros(d_fake.shape).to(device), reduction='none')
         fake_loss = torch.mean(fake_loss, 1)
-        return real_loss, fake_loss, torch.Tensor([0]).requires_grad_(True).cuda(in_real.device.index)
+        return real_loss, fake_loss, torch.Tensor([0]).requires_grad_(True).to(device)
         
     @staticmethod
     def compute_generator_loss_vanilla(ref_disc, in_fake, alpha=1):
         d_fake = ref_disc(in_fake, alpha)
-        fake_loss = torch.nn.functional.binary_cross_entropy_with_logits(d_fake, torch.ones(d_fake.shape).cuda())
+        fake_loss = torch.nn.functional.binary_cross_entropy_with_logits(d_fake, torch.ones(d_fake.shape).to(device))
         return fake_loss
         
     @staticmethod
@@ -148,7 +152,7 @@ class GANLoss:
             d_fake = d_fake[valid]
         real_loss = -torch.mean(d_real,1)
         fake_loss = torch.mean(d_fake,1)
-        return real_loss, fake_loss, torch.Tensor([0]).requires_grad_(True).cuda(in_real.device.index)
+        return real_loss, fake_loss, torch.Tensor([0]).requires_grad_(True).to(device)
 
     @staticmethod
     def compute_discriminator_loss_hinge(ref_disc, in_real, in_fake, valid, weight, val_mode=False, label_smoothing_factor=1, alpha=1):
@@ -162,7 +166,7 @@ class GANLoss:
             d_fake = d_fake[valid]
         real_loss = torch.mean(torch.nn.functional.relu(1. - d_real), 1)
         fake_loss = torch.mean(torch.nn.functional.relu(1. + d_fake), 1)
-        return real_loss, fake_loss, torch.Tensor([0]).requires_grad_(True).cuda(in_real.device.index)
+        return real_loss, fake_loss, torch.Tensor([0]).requires_grad_(True).to(device)
 
     @staticmethod
     def compute_discriminator_loss_wasserstein_gp(ref_disc, in_real, in_fake, valid, weight, val_mode=False, label_smoothing_factor=1, alpha=1):
@@ -180,14 +184,14 @@ class GANLoss:
         else:
             alpha = torch.rand(in_real.shape[0], 1, 1, 1)
         alpha = alpha.expand_as(in_real)
-        alpha = alpha.cuda(in_real.device.index)
+        alpha = alpha.to(device)
         interpolated = (alpha * in_real + (1 - alpha) * in_fake).requires_grad_(True)
 
         # Calculate probability of interpolated examples
         prob_interpolated = ref_disc(interpolated)
 
         # Calculate gradients of probabilities with respect to examples
-        gradients = torch.autograd.grad(outputs=prob_interpolated, inputs=interpolated, grad_outputs=torch.ones(prob_interpolated.size()).cuda(in_real.device.index), create_graph=True, retain_graph=True)[0]
+        gradients = torch.autograd.grad(outputs=prob_interpolated, inputs=interpolated, grad_outputs=torch.ones(prob_interpolated.size()).to(device), create_graph=True, retain_graph=True)[0]
 
         # Gradients have shape (batch_size, num_channels, img_width, img_height),
         # so flatten to easily take norm per example in batch

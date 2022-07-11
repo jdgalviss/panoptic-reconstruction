@@ -55,7 +55,7 @@ class RGBLoss(torch.nn.Module):
         self.renderer = Renderer(camera_base_transform=None)
 
         # Style Loss
-        model_style = torchvision.models.vgg19(pretrained=True).cuda().eval()
+        model_style = torchvision.models.vgg19(pretrained=True).to(device).eval()
         self.model_style = StyleModel(model_style, _imagenet_stats["mean"], _imagenet_stats["std"])
 
         # GAN Loss
@@ -139,7 +139,7 @@ class RGBLoss(torch.nn.Module):
             semantic_weights_sparse = weight_codes()[semantic_idx].to(device)
         
         # Get semantic weights Sparse Tensor and then transform to dense tensor (redundant?)
-        semantic_weights_sparse = Me.SparseTensor(semantic_weights_sparse, rgb_prediction.C, coordinate_manager=rgb_prediction.coordinate_manager)
+        semantic_weights_sparse = Me.SparseTensor(semantic_weights_sparse, geometry_prediction.C, coordinate_manager=geometry_prediction.coordinate_manager)
         semantic_weights, _, _ = semantic_weights_sparse.dense(dense_dimensions, min_coordinates)
         
         rgb = rgb.squeeze()

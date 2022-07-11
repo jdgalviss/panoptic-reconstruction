@@ -5,6 +5,7 @@ MODEL:
     ONLY_PANOPTIC_PRETRAINED: True
     USE_PRETRAINED: True
     COLOR_SPACE: "RGB"
+    DEVICE: "cuda:1"
 
     FIXNORM: True
 
@@ -28,6 +29,7 @@ MODEL:
         IS_SDF: False
         NUM_VIEWS: 1
         ENHANCE_CONTRAST: True
+        SEPARATE_ENCODER: True
 
         SEMANTIC_WEIGHT: 5.0
         INSTANCE_WEIGHT: 25.0

@@ -56,7 +56,7 @@ class RPNLossComputation:
 
         for anchors_per_image, targets_per_image in zip(anchors, targets):
             matched_targets = self.match_targets_to_anchors(
-                anchors_per_image, targets_per_image.to("cuda"), self.copied_fields)
+                anchors_per_image, targets_per_image.to(config.MODEL.DEVICE), self.copied_fields)
 
             matched_idxs = matched_targets.get_field("matched_idxs")
             labels_per_image = self.generate_labels_func(matched_targets)

@@ -4,6 +4,7 @@ from PIL import Image
 from matplotlib import pyplot as plt
 
 from lib.visualize.pointcloud import write_pointcloud
+device = torch.device(config.MODEL.DEVICE)
 
 
 class DepthMap(object):
@@ -57,22 +58,22 @@ class DepthMap(object):
         # linearize
         width = self.depth_map.shape[1]
         height = self.depth_map.shape[0]
-        depth_map = self.depth_map.reshape(-1).float().cuda()
+        depth_map = self.depth_map.reshape(-1).float().to(device)
 
         yv, xv = torch.meshgrid([torch.arange(height),
                                  torch.arange(width)])
 
-        yv = yv.reshape(-1).float().cuda() * depth_map.float()
-        xv = xv.reshape(-1).float().cuda() * depth_map.float()
-        coords3d = torch.stack([xv, yv, depth_map.float(), torch.ones_like(depth_map).float().cuda()])
-        pointcloud = torch.mm(torch.inverse(self.intrinsic_matrix.float().cuda()), coords3d.float()).t()[:, :3]
+        yv = yv.reshape(-1).float().to(device) * depth_map.float()
+        xv = xv.reshape(-1).float().to(device) * depth_map.float()
+        coords3d = torch.stack([xv, yv, depth_map.float(), torch.ones_like(depth_map).float().to(device)])
+        pointcloud = torch.mm(torch.inverse(self.intrinsic_matrix.float().to(device)), coords3d.float()).t()[:, :3]
 
         '''
            MC
         CM-CC-CP
            PC
         '''
-        output_normals = torch.zeros((3, height, width)).cuda()
+        output_normals = torch.zeros((3, height, width)).to(device)
 
         y, x = torch.meshgrid([torch.arange(1, height - 1),
                                torch.arange(1, width - 1)])
@@ -85,8 +86,8 @@ class DepthMap(object):
         MC = pointcloud[(y - 1) * width + (x + 0)]
         CM = pointcloud[(y + 0) * width + (x - 1)]
 
-        n = torch.cross(PC - MC, CP - CM).transpose(1, 0).cuda()
-        l = torch.norm(n, dim=0).cuda()
+        n = torch.cross(PC - MC, CP - CM).transpose(1, 0).to(device)
+        l = torch.norm(n, dim=0).to(device)
         output_normals[:, y, x] = n / (-l)
 
         # filter1: zero_depth and their neighbouring

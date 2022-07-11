@@ -9,6 +9,7 @@ from lib.structures.boxlist_ops import boxlist_iou
 from lib.modeling.detector.balanced_positive_negative_sampler import BalancedPositiveNegativeSampler
 from lib.modeling.detector.utils import cat
 from lib.config import config
+device = torch.device(config.MODEL.DEVICE)
 
 
 class FastRCNNLossComputation:
@@ -35,7 +36,7 @@ class FastRCNNLossComputation:
         self.box_coder = box_coder
         self.cls_agnostic_bbox_reg = cls_agnostic_bbox_reg
 
-        self.weights = torch.ones(config.MODEL.INSTANCE2D.ROI_HEADS.ROI_BOX_HEAD.NUM_CLASSES).cuda()
+        self.weights = torch.ones(config.MODEL.INSTANCE2D.ROI_HEADS.ROI_BOX_HEAD.NUM_CLASSES).to(device)
         for loc in range(config.MODEL.INSTANCE2D.ROI_HEADS.ROI_BOX_HEAD.NUM_CLASSES):
             self.weights[loc] = config.MODEL.FRUSTUM3D.CLASS_WEIGHTS[loc]
 

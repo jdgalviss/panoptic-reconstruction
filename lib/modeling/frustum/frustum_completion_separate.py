@@ -8,28 +8,28 @@ import MinkowskiEngine as Me
 
 from lib import modeling
 from lib.config import config
-from lib.modeling.backbone import UNetSparse, GeometryHeadSparse, ClassificationHeadSparse, ColorHeadSparse
+from lib.modeling.backbone import UNetSparse, UNetSparseRGB, GeometryHeadSparse, ClassificationHeadSparse, ColorHeadSparse
 from lib.structures.field_list import collect
 from lib.modeling.utils import ModuleResult
 from .rgb_loss import RGBLoss
 from lib.modeling.frustum.rgb_loss_proxy import RGBProxyLoss
 
-
 class FrustumCompletion(nn.Module):
     def __init__(self):
         super().__init__()
-        print("-----------------------------------------")
-        print("unet_output_channels", config.MODEL.FRUSTUM3D.UNET_OUTPUT_CHANNELS)
-        print("unet_fetures", config.MODEL.FRUSTUM3D.UNET_FEATURES)
-
         self.model = UNetSparse(config.MODEL.FRUSTUM3D.UNET_OUTPUT_CHANNELS,
                                 num_features=config.MODEL.FRUSTUM3D.UNET_FEATURES)
 
+        self.model_rgb = UNetSparseRGB(config.MODEL.FRUSTUM3D.UNET_OUTPUT_CHANNELS,
+                                num_features=config.MODEL.FRUSTUM3D.UNET_FEATURES)
+
         self.occupancy_256_head = None
+        self.occupancy_256_rgb_head = None
         self.surface_head = None
         self.semantic_head = None
         self.instance_head = None
         self.rgb_head = None
+
 
         self.init_heads(torch.device(config.MODEL.DEVICE))
 
@@ -46,7 +46,6 @@ class FrustumCompletion(nn.Module):
         self.rgb_loss_64 = RGBProxyLoss(volume_size=64)
         self.rgb_loss_128 = RGBProxyLoss(volume_size=128)
 
-
         self.truncation = config.MODEL.FRUSTUM3D.TRUNCATION
         self.frustum_dimensions = [256, 256, 256]
 
@@ -56,6 +55,11 @@ class FrustumCompletion(nn.Module):
                                                      config.MODEL.FRUSTUM3D.TRUNCATION,
                                                      config.MODEL.FRUSTUM3D.GEOMETRY_HEAD.RESNET_BLOCKS)
         self.occupancy_256_head = self.occupancy_256_head.to(device)
+
+        self.occupancy_256_rgb_head = GeometryHeadSparse(config.MODEL.FRUSTUM3D.UNET_OUTPUT_CHANNELS, 1,
+                                                     config.MODEL.FRUSTUM3D.TRUNCATION,
+                                                     config.MODEL.FRUSTUM3D.GEOMETRY_HEAD.RESNET_BLOCKS)
+        self.occupancy_256_rgb_head = self.occupancy_256_rgb_head.to(device)
 
         # Surface head
         self.surface_head = GeometryHeadSparse(config.MODEL.FRUSTUM3D.UNET_OUTPUT_CHANNELS, 1,
@@ -88,76 +92,54 @@ class FrustumCompletion(nn.Module):
         frustum_mask = collect(targets, "frustum_mask")
         frustum_mask_64 = F.max_pool3d(frustum_mask.float(), kernel_size=2, stride=4).bool()
         unet_output = self.model(frustum_features, batch_size, frustum_mask_64)
+        unet_output_rgb = self.model_rgb(frustum_features, batch_size, frustum_mask_64)
+
 
         losses = {}
         results = {}
 
-        if unet_output is None:
+        if (unet_output is None) or (unet_output_rgb is None):
             return {}, {}
 
         predictions = unet_output.data
+        predictions_rgb = unet_output.data
 
-        if predictions[2] is None:
+
+        if (predictions[2] is None) or (predictions_rgb[2] is None):
             return {}, {}
-        
-        # print('-----------------------------------------')
-        # print("predictions unet: ", len(predictions))
-        # print("predictions unet2: ", len(predictions[2]))
-        # print("predictions unet 2.0 shape: ", predictions[2][0].shape) # geometry
-        # print("predictions unet 2.1 shape: ", predictions[2][1].shape) # instances
-        # print("predictions unet 2.2 shape: ", predictions[2][2].shape) # semantic
-        # print("predictions unet 2.3 shape: ", predictions[2][3].shape) # color
-
 
         # Hierarchy level: 64 -> Occupancy, Instances, Semantics
         weighting_64 = collect(targets, "weighting3d_64")
-        losses_64, results_64 = self.forward_64(predictions[2], targets, frustum_mask_64, weighting_64)
+        losses_64, results_64 = self.forward_64(predictions[2], predictions_rgb[2], targets, frustum_mask_64, weighting_64)
         losses.update(losses_64)
         results.update(results_64)
 
-        if predictions[1] is None:
+        # Hierarchy level: 128 -> Occupancy, Instances, Semantics
+        if (predictions[1] is None) or (predictions_rgb[1] is None):
             return losses, results
 
-        # Hierarchy level: 128 -> Occupancy, Instances, Semantics
-        # print('-----------------------------------------')
-        # print("predictions unet 1 len: ", len(predictions[1]))
-
-        # if not predictions[1][0] is None:
-        #     print("predictions unet 1.0 shape: ", predictions[1][0].shape)
-        #     print("predictions unet 1.1 shape: ", predictions[1][1].shape)
-        #     print("predictions unet 1.2 shape: ", predictions[1][2].shape)
-        #     print("predictions unet 1.3 shape: ", predictions[1][3].shape)
-
-
-
         weighting_128 = collect(targets, "weighting3d_128")
-        losses_128, results_128 = self.forward_128(predictions[1], targets, weighting_128)
+        losses_128, results_128 = self.forward_128(predictions[1], predictions_rgb[1], targets, weighting_128)
         losses.update(losses_128)
         results.update(results_128)
 
-        if predictions[0] is None:
+        # Hierarchy level: 256 -> Occupancy
+        if (predictions[0] is None) or (predictions_rgb[0] is None):
             return losses, results
 
-        # Hierarchy level: 256 -> Occupancy
-        # print('-----------------------------------------')
-        # print("predictions unet 0 len: ", len(predictions[0]))
-        # print("predictions unet 0 shape: ", predictions[0].shape)
         weighting_256 = collect(targets, "weighting3d")
-        losses_256, results_256, features_256 = self.forward_256(predictions[0], targets, weighting_256) # out of memory
-
+        losses_256, results_256, features_256, features_rgb_256 = self.forward_256(predictions[0], predictions_rgb[0], targets, weighting_256)
         losses.update(losses_256)
-
         results.update(results_256)
 
         # Output level -> Surface, Instances, Semantics
-        losses_output, results_output = self.forward_output(features_256, targets, weighting_256)
-
+        losses_output, results_output = self.forward_output(features_256, features_rgb_256, targets, weighting_256)
         losses.update(losses_output)
         results.update(results_output)
 
         return losses, results
 
-    def forward_64(self, predictions, targets, frustum_mask, weighting_mask) -> Tuple[Dict, Dict]:
+    def forward_64(self, predictions, predictions_rgb, targets, frustum_mask, weighting_mask) -> Tuple[Dict, Dict]:
         hierarchy_losses = {}
         hierarchy_results = {}
 
@@ -188,26 +170,33 @@ class FrustumCompletion(nn.Module):
         hierarchy_losses.update(semantic_loss)
         hierarchy_results.update(semantic_result)
 
+        # RGB branch
+        # occupancy
+        occupancy_prediction = predictions_rgb[0]
+        occupancy_loss, occupancy_result = self.compute_occupancy_64_loss(occupancy_prediction, occupancy_ground_truth,
+                                                                          frustum_mask, weighting_mask, is_rgb_branch=True)
+        hierarchy_losses.update(occupancy_loss)
+        hierarchy_results.update(occupancy_result)
 
-        # Surface
+        #surface
         aux_views = collect(targets, "aux_views")
         cam_poses = collect(targets, "cam_poses")
         surface_ground_truth = collect(targets, "geometry")
+        surface_prediction = predictions_rgb[2]
 
-        surface_prediction = predictions[4]
         surface_loss, surface_result = self.compute_surface_64_loss(surface_prediction, surface_ground_truth.clone(), weighting_mask)
         hierarchy_losses.update(surface_loss)
         hierarchy_results.update(surface_result)
 
-        # Color
-        rgb_prediction = predictions[3]
+        # RGB
+        rgb_prediction = predictions_rgb[1]
+
         color_loss, color_result = self.compute_color_64_loss(rgb_prediction, surface_prediction, aux_views, cam_poses) # Color loss
         hierarchy_losses.update(color_loss)
         hierarchy_results.update(color_result)
 
         return hierarchy_losses, hierarchy_results
-
-
+    
     def compute_color_64_loss(self, rgb_prediction: torch.Tensor, surface_prediction: torch.Tensor, 
                             aux_views: torch.Tensor, cam_poses: torch.Tensor) -> Tuple[Dict, Dict]:
         """
@@ -247,7 +236,7 @@ class FrustumCompletion(nn.Module):
         return {"geometry_64": loss_weighted}, {"geometry_64": surface}
 
     def compute_occupancy_64_loss(self, prediction: torch.Tensor, ground_truth: torch.Tensor,
-                                  mask: torch.Tensor, weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
+                                  mask: torch.Tensor, weighting_mask: torch.Tensor, is_rgb_branch = False) -> Tuple[Dict, Dict]:
         loss = self.criterion_occupancy(prediction, ground_truth, reduction="none")
 
         # Only consider loss within the camera frustum
@@ -264,7 +253,10 @@ class FrustumCompletion(nn.Module):
         occupancy_probability = torch.sigmoid(prediction)
         occupancy = torch.masked_fill(occupancy_probability, mask == False, 0.0)  # mask out regions outside of frustum
 
-        return {"occupancy_64": loss_weighted}, {"occupancy_64": occupancy}
+        if is_rgb_branch:
+            return {"occupancy_64_rgb": loss_weighted}, {"occupancy_64_rgb": occupancy}
+        else:
+            return {"occupancy_64": loss_weighted}, {"occupancy_64": occupancy}
 
     def compute_instance_64_loss(self, prediction: torch.Tensor, ground_truth: torch.Tensor,
                                  mask: torch.Tensor, weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
@@ -306,7 +298,7 @@ class FrustumCompletion(nn.Module):
 
         return {"semantic3d_64": loss_weighted}, {"semantic3d_64": prediction}
 
-    def forward_128(self, predictions, targets, weighting_mask) -> Tuple[Dict, Dict]:
+    def forward_128(self, predictions, predictions_rgb, targets, weighting_mask) -> Tuple[Dict, Dict]:
         hierarchy_losses = {}
         hierarchy_results = {}
 
@@ -340,9 +332,17 @@ class FrustumCompletion(nn.Module):
             hierarchy_losses.update(semantic_loss)
             hierarchy_results.update(semantic_result)
 
-        
+        # RGB branch
+        # occupancy at 128
+        occupancy_prediction: Me.SparseTensor = predictions_rgb[0]
+        if occupancy_prediction is not None:
+            occupancy_ground_truth = collect(targets, "occupancy_128")
+            occupancy_loss, occupancy_result = self.compute_occupancy_128_loss(occupancy_prediction, occupancy_ground_truth, weighting_mask, is_rgb_branch=True)
+            hierarchy_losses.update(occupancy_loss)
+            hierarchy_results.update(occupancy_result)
+
         # Surface at 128
-        surface_prediction: Me.SparseTensor = predictions[4]
+        surface_prediction: Me.SparseTensor = predictions_rgb[2]
         surface_ground_truth = collect(targets, "geometry")
         aux_views = collect(targets, "aux_views")
         cam_poses = collect(targets, "cam_poses")
@@ -358,7 +358,7 @@ class FrustumCompletion(nn.Module):
             hierarchy_results.update(surface_result)
             
 
-        rgb_prediction: Me.SparseTensor = predictions[3]
+        rgb_prediction: Me.SparseTensor = predictions_rgb[1]
         if rgb_prediction is not None and surface_prediction is not None:
             rgb_prediction, _, _ = rgb_prediction.dense(dense_dimensions, min_coordinates, default_value=truncation)
 
@@ -370,7 +370,7 @@ class FrustumCompletion(nn.Module):
             hierarchy_results.update(color_result)
 
         return hierarchy_losses, hierarchy_results
-    
+
     def compute_color_128_loss(self, rgb_prediction: torch.Tensor, surface_prediction: torch.Tensor, 
                             aux_views: torch.Tensor, cam_poses: torch.Tensor) -> Tuple[Dict, Dict]:
         """
@@ -409,8 +409,9 @@ class FrustumCompletion(nn.Module):
 
         return {"geometry_128": loss_weighted}, {"geometry_128": surface}
 
+
     def compute_occupancy_128_loss(self, prediction: Me.SparseTensor, ground_truth: torch.Tensor,
-                                   weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
+                                   weighting_mask: torch.Tensor, is_rgb_branch = False) -> Tuple[Dict, Dict]:
         prediction = self.mask_invalid_sparse_voxels(prediction)
         predicted_coordinates = prediction.C.long()
         # predicted_coordinates[:, 1:] = torch.div(predicted_coordinates[:, 1:], prediction.tensor_stride[0], rounding_mode="floor")
@@ -434,7 +435,10 @@ class FrustumCompletion(nn.Module):
 
         occupancy = Me.MinkowskiSigmoid()(prediction)
 
-        return {"occupancy_128": loss_weighted}, {"occupancy_128": occupancy}
+        if is_rgb_branch:
+            return {"occupancy_128_rgb": loss_weighted}, {"occupancy_128_rgb": occupancy}
+        else:
+            return {"occupancy_128": loss_weighted}, {"occupancy_128": occupancy}
 
     def compute_instance_128_loss(self, prediction: Me.SparseTensor, ground_truth: torch.Tensor,
                                   weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
@@ -496,7 +500,7 @@ class FrustumCompletion(nn.Module):
 
         return {"semantic3d_128": loss_weighted}, {"semantic3d_128": semantic_labels}
 
-    def forward_256(self, predictions, targets, weighting_mask) -> Tuple[Dict, Dict, Me.SparseTensor]:
+    def forward_256(self, predictions, predictions_rgb, targets, weighting_mask) -> Tuple[Dict, Dict, Me.SparseTensor]:
         hierarchy_losses = {}
         hierarchy_results = {}
 
@@ -518,9 +522,28 @@ class FrustumCompletion(nn.Module):
             occupancy_mask = (occupancy_result["occupancy_256"].F > occupancy_masking_threshold).squeeze()
             feature_prediction = Me.MinkowskiPruning()(feature_prediction, occupancy_mask)
 
-        return hierarchy_losses, hierarchy_results, feature_prediction
+        #RGB branch
+        feature_prediction_rgb: Me.SparseTensor = predictions_rgb
 
-    def compute_occupancy_256_loss(self, prediction, ground_truth, weighting_mask) -> Tuple[Dict, Dict]:
+        if feature_prediction_rgb is not None:
+            # occupancy at 256
+            occupancy_prediction = self.occupancy_256_rgb_head(feature_prediction_rgb)
+            occupancy_ground_truth = collect(targets, "occupancy_256")
+            occupancy_loss, occupancy_result = self.compute_occupancy_256_loss(occupancy_prediction,
+                                                                               occupancy_ground_truth,
+                                                                               weighting_mask, is_rgb_branch=True)
+
+            hierarchy_losses.update(occupancy_loss)
+            hierarchy_results.update(occupancy_result)
+
+            # Use occupancy prediction to refine sparse voxels
+            occupancy_masking_threshold = config.MODEL.FRUSTUM3D.SPARSE_THRESHOLD_256
+            occupancy_mask = (occupancy_result["occupancy_256"].F > occupancy_masking_threshold).squeeze()
+            feature_prediction_rgb = Me.MinkowskiPruning()(feature_prediction_rgb, occupancy_mask)
+
+        return hierarchy_losses, hierarchy_results, feature_prediction, feature_prediction_rgb
+
+    def compute_occupancy_256_loss(self, prediction, ground_truth, weighting_mask, is_rgb_branch=False) -> Tuple[Dict, Dict]:
         prediction = self.mask_invalid_sparse_voxels(prediction)
         predicted_coordinates = prediction.C.long()
         # predicted_coordinates[:, 1:] = torch.div(predicted_coordinates[:, 1:], prediction.tensor_stride[0], rounding_mode="floor")
@@ -544,9 +567,12 @@ class FrustumCompletion(nn.Module):
 
         occupancy = Me.MinkowskiSigmoid()(prediction)
 
-        return {"occupancy_256": loss_weighted}, {"occupancy_256": occupancy}
+        if is_rgb_branch:
+            return {"occupancy_256_rgb": loss_weighted}, {"occupancy_256_rgb": occupancy}
+        else:
+            return {"occupancy_256": loss_weighted}, {"occupancy_256": occupancy}
 
-    def forward_output(self, predictions: List[Me.SparseTensor], targets, weighting_mask) -> Tuple[Dict, Dict]:
+    def forward_output(self, predictions: List[Me.SparseTensor], predictions_rgb: List[Me.SparseTensor], targets, weighting_mask) -> Tuple[Dict, Dict]:
         hierarchy_losses = {}
         hierarchy_results = {}
 
@@ -573,9 +599,9 @@ class FrustumCompletion(nn.Module):
             semantic_loss, semantic_result = self.compute_semantic_256_loss(semantic_prediction, semantic_ground_truth, weighting_mask)
             hierarchy_losses.update(semantic_loss)
             hierarchy_results.update(semantic_result)
-
-        # RGB
-        rgb_prediction = self.rgb_head(predictions)
+        
+        #RGB branch
+        rgb_prediction = self.rgb_head(predictions_rgb)
         # print("rgb_prediction shape: ", rgb_prediction.shape)
         if rgb_prediction is not None:
             # rgb_ground_truth: torch.LongTensor = collect(targets, "rgb").long().squeeze(1)
@@ -586,6 +612,36 @@ class FrustumCompletion(nn.Module):
 
 
         return hierarchy_losses, hierarchy_results
+
+    def compute_rgb_loss(self, prediction: Me.SparseTensor, targets, results,
+                         weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
+
+        # Grount truth
+        aux_views = collect(targets, "aux_views")
+        cam_poses = collect(targets, "cam_poses")
+        target_geometry = collect(targets, "geometry")
+
+        prediction = self.mask_invalid_sparse_voxels(prediction)
+
+        predicted_coordinates = prediction.C.long()
+        # predicted_coordinates[:, 1:] = torch.div(predicted_coordinates[:, 1:], prediction.tensor_stride[0], rounding_mode="floor")
+        predicted_coordinates[:, 1:] = predicted_coordinates[:, 1:] // prediction.tensor_stride[0]
+
+        # Get sparse weighting values from dense tensor
+        weighting_values = modeling.get_sparse_values(weighting_mask, predicted_coordinates).squeeze(1)
+
+        rgb_prediction = Me.SparseTensor(prediction.F, prediction.C,
+                                             coordinate_manager=prediction.coordinate_manager)
+        # print(results.keys())
+        geometry_prediction = results['geometry']
+        semantic_prediction = results['semantic3d']
+        # print("\ngeometry_sparse shape: ", geometry_prediction.shape)
+        # print("rgb_sparse shape: ", rgb_prediction.shape)
+
+        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses, target_geometry.clone())
+        loss['rgb_total_loss']*=config.MODEL.FRUSTUM3D.RGB_WEIGHT
+        return loss, {"rgb": rgb_prediction}
+
 
     def compute_surface_loss(self, prediction: Me.SparseTensor, ground_truth: torch.Tensor,
                              weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
@@ -676,55 +732,6 @@ class FrustumCompletion(nn.Module):
 
         return {"semantic3d": loss_weighted}, {"semantic3d": semantic_softmax, "semantic3d_label": semantic_labels}
 
-
-    def compute_rgb_loss(self, prediction: Me.SparseTensor, targets, results,
-                         weighting_mask: torch.Tensor) -> Tuple[Dict, Dict]:
-
-        # Grount truth
-        aux_views = collect(targets, "aux_views")
-        cam_poses = collect(targets, "cam_poses")
-        target_geometry = collect(targets, "geometry")
-
-        # print("aux_views", aux_views.shape)
-        # print("cam_poses", cam_poses.shape)
-
-
-        prediction = self.mask_invalid_sparse_voxels(prediction)
-
-        predicted_coordinates = prediction.C.long()
-        # predicted_coordinates[:, 1:] = torch.div(predicted_coordinates[:, 1:], prediction.tensor_stride[0], rounding_mode="floor")
-        predicted_coordinates[:, 1:] = predicted_coordinates[:, 1:] // prediction.tensor_stride[0]
-
-        # Get sparse GT values from dense tensor
-        # ground_truth_values = modeling.get_sparse_values(ground_truth, predicted_coordinates)
-
-        # loss = self.criterion_rgb(prediction.F, ground_truth_values.squeeze(1), weight=self.rgb_weights, reduction="none")
-
-        # Get sparse weighting values from dense tensor
-        weighting_values = modeling.get_sparse_values(weighting_mask, predicted_coordinates).squeeze(1)
-        # loss = (loss * weighting_values)
-
-        # if len(loss) > 0:
-        #     loss_mean = loss.mean()
-        # else:
-        #     loss_mean = 0
-
-        # loss_weighted = loss_mean * config.MODEL.FRUSTUM3D.RGB_WEIGHT
-
-        # rgb_values = torch.clamp(prediction.F, 0.0, 1.0)
-        rgb_prediction = Me.SparseTensor(prediction.F, prediction.C,
-                                             coordinate_manager=prediction.coordinate_manager)
-        # print(results.keys())
-        geometry_prediction = results['geometry']
-        semantic_prediction = results['semantic3d']
-        # print("\ngeometry_sparse shape: ", geometry_prediction.shape)
-        # print("rgb_sparse shape: ", rgb_prediction.shape)
-
-        loss = self.rgb_loss(geometry_prediction, rgb_prediction, semantic_prediction, aux_views, cam_poses, target_geometry.clone())
-        loss['rgb_total_loss']*=config.MODEL.FRUSTUM3D.RGB_WEIGHT
-        return loss, {"rgb": rgb_prediction}
-
-
     def mask_invalid_sparse_voxels(self, grid: Me.SparseTensor) -> Me.SparseTensor:
         # Mask out voxels which are outside of the grid
         valid_mask = (grid.C[:, 1] < self.frustum_dimensions[0] - 1) & (grid.C[:, 1] >= 0) & \
@@ -748,7 +755,6 @@ class FrustumCompletion(nn.Module):
         # downscale frustum_mask
         frustum_mask_64 = F.max_pool3d(frustum_mask.float(), kernel_size=2, stride=4).bool()
         unet_output = self.model(frustum_results, 1, frustum_mask_64)
-
         predictions = unet_output.data
         occupancy_prediction = self.occupancy_256_head(predictions[0])
         occupancy_prediction = self.mask_invalid_sparse_voxels(occupancy_prediction)
@@ -765,27 +771,25 @@ class FrustumCompletion(nn.Module):
         surface_values = torch.clamp(surface_prediction.F, 0.0, self.truncation)
         surface_prediction = Me.SparseTensor(surface_values, surface_prediction.C,
                                              coordinate_manager=surface_prediction.coordinate_manager)
+
         instance_prediction = self.instance_head(prediction_pruned)
+
         instance_softmax = Me.MinkowskiSoftmax(dim=1)(instance_prediction)
         instance_labels = Me.SparseTensor(torch.argmax(instance_softmax.F, 1).unsqueeze(1),
                                           coordinate_map_key=instance_prediction.coordinate_map_key,
                                           coordinate_manager=instance_prediction.coordinate_manager)
 
         semantic_prediction = self.semantic_head(prediction_pruned)
+
         semantic_softmax = Me.MinkowskiSoftmax(dim=1)(semantic_prediction)
         semantic_labels = Me.SparseTensor(torch.argmax(semantic_softmax.F, 1).unsqueeze(1),
                                           coordinate_map_key=semantic_prediction.coordinate_map_key,
                                           coordinate_manager=semantic_prediction.coordinate_manager)
 
-        rgb_prediction = self.rgb_head(prediction_pruned)
-        # rgb_values = torch.clamp(rgb_prediction.F, 0.0, 255.0)
-        rgb_prediction = Me.SparseTensor(rgb_prediction.F, rgb_prediction.C,
-                                             coordinate_manager=rgb_prediction.coordinate_manager)
         frustum_result = {
             "geometry": surface_prediction,
             "instance3d": instance_labels,
-            "semantic3d_label": semantic_labels,
-            "rgb": rgb_prediction
+            "semantic3d_label": semantic_labels
         }
 
         return frustum_result

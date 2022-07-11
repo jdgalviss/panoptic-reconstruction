@@ -55,7 +55,7 @@ class RGBLoss(torch.nn.Module):
         self.normalize_transform = t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
 
         # Style Loss
-        model_style = torchvision.models.vgg19(pretrained=True).cuda().eval()
+        model_style = torchvision.models.vgg19(pretrained=True).to(device).eval()
         self.model_style = StyleModel(model_style, _imagenet_stats["mean"], _imagenet_stats["std"])
 
         # GAN Loss

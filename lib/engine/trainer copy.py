@@ -300,7 +300,7 @@ class Trainer:
                         metrics.update(rgb_loss)
                         # Surface to dense tensor
                         dense_dimensions = torch.Size([1, 1] + config.MODEL.FRUSTUM3D.GRID_DIMENSIONS)
-                        min_coordinates = torch.IntTensor([0, 0, 0]).to("cuda")
+                        min_coordinates = torch.IntTensor([0, 0, 0]).to(config.MODEL.DEVICE)
                         truncation = config.MODEL.FRUSTUM3D.TRUNCATION
                         sdf, _, _ = results['frustum']['geometry'].dense(dense_dimensions, min_coordinates, default_value=truncation)
                         rgb, _, _ = results['frustum']['rgb'].dense(dense_dimensions, min_coordinates, default_value=truncation)

@@ -23,7 +23,7 @@ import time
 def main(opts):
     configure_inference(opts)
 
-    device = torch.device("cuda:0")
+    device = torch.device(config.MODEL.DEVICE)
 
     # Define model and load checkpoint.
     print("Load model...")

@@ -54,7 +54,7 @@ class RGBLoss(torch.nn.Module):
         self.renderer = Renderer(camera_base_transform=None)
 
         # Style Loss
-        model_style = torchvision.models.vgg19(pretrained=True).cuda().eval()
+        model_style = torchvision.models.vgg19(pretrained=True).to(device).eval()
         self.model_style = StyleModel(model_style, _imagenet_stats["mean"], _imagenet_stats["std"])
 
         # GAN Loss

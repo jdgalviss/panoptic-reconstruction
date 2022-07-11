@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
+from lib.config import config
 
 # transpose
 from typing import List
@@ -76,14 +77,14 @@ class FieldList:
         return s
 
 
-def collect(data: List[FieldList], field: str, device: str = "cuda", access_fn=None) -> torch.Tensor:
+def collect(data: List[FieldList], field: str, device: str = config.MODEL.DEVICE, access_fn=None) -> torch.Tensor:
     if access_fn is None:
         return torch.stack([conditional_to(t.get_field(field), device) for t in data], dim=0)
     else:
         return torch.stack([conditional_to(access_fn(t.get_field(field)), device) for t in data], dim=0)
 
 
-def conditional_to(x: torch.Tensor, device: str = "cuda") -> torch.Tensor:
+def conditional_to(x: torch.Tensor, device: str = config.MODEL.DEVICE) -> torch.Tensor:
     if device is None:
         return x
     else:

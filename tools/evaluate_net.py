@@ -26,7 +26,7 @@ def main(opts, start=0, end=None):
     configure_inference(opts)
 
     re_seed(0)
-    device = torch.device("cuda:0")
+    device = torch.device(config.MODEL.DEVICE)
 
     output_path = Path(config.OUTPUT_DIR)
     output_path.mkdir(exist_ok=True, parents=True)

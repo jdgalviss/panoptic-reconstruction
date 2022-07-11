@@ -16,7 +16,7 @@ from lib.structures import SegmentationMask, FieldList
 
 from .rpn import rpn
 from .roi_heads import roi_heads
-
+device = torch.device(config.MODEL.DEVICE)
 
 class GeneralizedRCNN(nn.Module):
     def __init__(self, in_channels):
@@ -48,7 +48,7 @@ class GeneralizedRCNN(nn.Module):
             results_detection = [target.copy_with_fields([]) for target in bounding_boxes_gt]
 
             for result_item in results_detection:
-                result_item.add_field("objectness", torch.ones(len(result_item.bbox)).cuda())
+                result_item.add_field("objectness", torch.ones(len(result_item.bbox)).to(device))
 
         if self.roi_heads:
             results_detection, losses_roi = self.roi_heads(features, results_detection, bounding_boxes_gt)
