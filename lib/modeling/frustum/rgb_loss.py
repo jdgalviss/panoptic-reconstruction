@@ -3,7 +3,7 @@ from .renderer import Renderer
 from .style import Model as StyleModel
 from .style import gram_matrix
 from .discriminator import Discriminator2D, GANLoss
-from .utils import weight_codes, create_color_palette
+from .utils import weight_codes, create_color_palette, convert_lab01_to_rgb_pt
 import torchvision
 import torch
 import torch.nn as nn
@@ -42,6 +42,7 @@ def plot_image(img):
     ax.grid(which='major', alpha=0.5)
     plt.show()
 
+
 class RGBLoss(torch.nn.Module):
     """
     RGB Loss class used to compute reconstruction loss, style loss and GAN loss.
@@ -59,7 +60,7 @@ class RGBLoss(torch.nn.Module):
 
         # GAN Loss
         self.discriminator = Discriminator2D(nf_in=6, nf=8, patch_size=96, image_dims=(320, 240), patch=True, use_bias=True, disc_loss_type='vanilla').to(device)
-        self.optimizer_disc = torch.optim.Adam(self.discriminator.parameters(), lr=4*0.001, weight_decay=0.0)
+        self.optimizer_disc = torch.optim.Adam(self.discriminator.parameters(), lr=1*0.001, weight_decay=0.0)
         self.gan_loss = GANLoss(loss_type='vanilla')
 
     def compute_style_loss(self, pred_color, target_color, compute_style=True, compute_content=True, mask=None):
@@ -200,14 +201,30 @@ class RGBLoss(torch.nn.Module):
         valids = torch.logical_not(masks)
         if debug:
             for img, weight, view, mask, normal, target_normal in zip(imgs,weights,views, masks, normals, target_normals):
-                plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
-                plot_image(weight.detach().cpu().numpy())
-                plot_image(normal.detach().cpu().numpy())
-                plot_image(target_normal.detach().cpu().numpy())
-                # plot_image(np.float32(mask.detach().cpu().numpy()))
-                plot_image(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+                if config.MODEL.COLOR_SPACE == "LAB":
+                    plot_image(img.detach().cpu().numpy())
+                    img_style = convert_lab01_to_rgb_pt(img.unsqueeze(0))
+                    plot_image(img_style[0].detach().cpu().numpy())
 
-                plot_image(0.3*target_normal.detach().cpu().numpy()+0.7*(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean']))
+                    plot_image(weight.detach().cpu().numpy())
+                    plot_image(normal.detach().cpu().numpy())
+                    plot_image(target_normal.detach().cpu().numpy())
+                    # plot_image(np.float32(mask.detach().cpu().numpy()))
+                    plot_image(view.detach().cpu().numpy())
+                    view_style = convert_lab01_to_rgb_pt(view.unsqueeze(0))
+                    plot_image(view_style[0].detach().cpu().numpy())
+                    plot_image(0.3*target_normal.detach().cpu().numpy()+0.7*(view.detach().cpu().numpy()))
+
+                else:
+                    plot_image(img.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+                    plot_image(weight.detach().cpu().numpy())
+                    plot_image(normal.detach().cpu().numpy())
+                    plot_image(target_normal.detach().cpu().numpy())
+                    # plot_image(np.float32(mask.detach().cpu().numpy()))
+                    plot_image(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean'])
+
+                    plot_image(0.3*target_normal.detach().cpu().numpy()+0.7*(view.detach().cpu().numpy()*_imagenet_stats['std']+_imagenet_stats['mean']))
+
 
         # Compute Losses
         # L1-loss
@@ -223,10 +240,23 @@ class RGBLoss(torch.nn.Module):
         # style_loss, loss_content = self.compute_style_loss(imgs.permute(0,3,1,2),views.permute(0,3,1,2))
         style_loss = torch.tensor(0.0).to(device)
         loss_content = torch.tensor(0.0).to(device)
-        for i in range(3):
-            _style_loss, _loss_content = self.compute_style_loss(imgs.permute(0,3,1,2)[i].unsqueeze(0),views.permute(0,3,1,2)[i].unsqueeze(0))
+        # print("\nimgs: ", imgs.shape)
+        # print("views: ", views.shape)
+
+        for i in range(config.MODEL.FRUSTUM3D.NUM_VIEWS):
+            if config.MODEL.COLOR_SPACE == "LAB":
+                img_style = convert_lab01_to_rgb_pt(imgs[i].unsqueeze(0).clone())
+                view_style = convert_lab01_to_rgb_pt(views[i].unsqueeze(0).clone())
+                # print("img_style: ", img_style.shape)
+                # print("img_style range: [{},{}]".format(img_style.min(), img_style.max()))
+                # print("view_style: ", view_style.shape)
+                # print("view_style range: [{},{}]".format(view_style.min(), view_style.max()))
+                _style_loss, _loss_content = self.compute_style_loss(img_style.permute(0,3,1,2),view_style.permute(0,3,1,2))
+            else:
+                _style_loss, _loss_content = self.compute_style_loss(imgs.permute(0,3,1,2)[i].unsqueeze(0),views.permute(0,3,1,2)[i].unsqueeze(0))
             style_loss += _style_loss
             loss_content += _loss_content
+
 
         # GAN Loss
         # Render ground truth normals
@@ -253,6 +283,11 @@ class RGBLoss(torch.nn.Module):
         real_loss = torch.mean(real_loss)
         fake_loss = torch.mean(fake_loss)
         disc_loss = (real_loss + fake_loss)
+
+
+        
+
+
         # Training step for the Discriminator
         if not debug:
             disc_loss.backward()

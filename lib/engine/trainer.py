@@ -22,6 +22,7 @@ import torchvision
 import numpy as np
 from lib.utils.intrinsics import adjust_intrinsic
 import pprint
+from lib.modeling.frustum.utils import convert_lab01_to_rgb_pt
 
 stages = ["64","128","256"]
 _imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
@@ -204,7 +205,12 @@ class Trainer:
 
 
         for idx, (image_ids, targets) in enumerate(self.dataloader):
-            assert targets is not None, "error during data loading"
+            # assert targets is not None, "error during data loading"
+            if targets is not None:
+                pass
+            else:
+                print("targets is none, skipping: ", image_ids[0])
+                continue
             data_time = time.time() - iteration_end
 
             # Get input images
@@ -285,6 +291,7 @@ class Trainer:
                 if True:
                     rendered_imgs = []
                     aux_views = []
+                    N = 0
                     for idx, (image_ids, targets) in tqdm(enumerate(self.val_dataloader), total=len(self.val_dataloader)):
                         if targets is None:
                             print(f"Error, {image_ids[0]}")
@@ -341,27 +348,48 @@ class Trainer:
                         sdf, _, _ = results['frustum']['geometry'].dense(dense_dimensions, min_coordinates, default_value=truncation)
                         rgb, _, _ = results['frustum']['rgb'].dense(dense_dimensions, min_coordinates, default_value=truncation)
                         imgs, _ = self.renderer_256.render_image(sdf,rgb,cam_poses)
+
+                        views = views.permute(0,1,3,4,2)
+                        views = views[0]
+                        for img, view in zip(imgs, views):
+                            # view = view.permute(1,2,0)
+                            # print("view shape: ", view.shape)
+                            mask = (torch.logical_or(torch.isinf(img),torch.isnan(img)))
+                            img[mask] = 0.0
+                            view[mask] = 0.0
+                            N += (torch.sum(torch.logical_not(mask)).item())
+                            if config.MODEL.COLOR_SPACE == "LAB":
+                                img = convert_lab01_to_rgb_pt(img.unsqueeze(0))
+                                view = convert_lab01_to_rgb_pt(view.unsqueeze(0))
+                                rendered_imgs.append(img.permute(0,3,1,2))
+                                aux_views.append(view.permute(0,3,1,2))
+                            else:
+                                rendered_imgs.append(img.unsqueeze(0).permute(0,3,1,2))
+                                aux_views.append(view.unsqueeze(0).permute(0,3,1,2))
+
+
                         # imgs = imgs.detach().cpu()
-                        rendered_imgs.append(imgs)
-                        aux_views.append(views[0])
+                        # rendered_imgs.append(imgs.permute(0,3,1,2))
+                        # aux_views.append(views.permute(0,3,1,2))
 
                     # Compute L1 reconstruction loss
                     rendered_imgs = torch.cat(rendered_imgs)
                     aux_views = torch.cat(aux_views)
-                    rendered_imgs = rendered_imgs.permute(0,3,1,2)
-                    masks = (torch.logical_or(torch.isinf(rendered_imgs),torch.isnan(rendered_imgs)))
-                    rendered_imgs[masks] = 0.0
-                    aux_views[masks] = 0.0
+                    # print("rendered_imgs shape: ", rendered_imgs.shape)
+                    # print("aux_views shape: ", aux_views.shape)
+                    if config.MODEL.COLOR_SPACE != "LAB":
+                        rendered_imgs = self.unnormalize(rendered_imgs)
+                        aux_views = self.unnormalize(aux_views)
                     l1_reconstruction_loss = torch.abs(rendered_imgs-aux_views)
-                    N = (torch.sum(torch.logical_not(masks)).item())
+                    
                     if N != 0:
                         l1_reconstruction_loss  = torch.sum(l1_reconstruction_loss) / N
                         writer.add_scalar('eval/l1_reconstruction', l1_reconstruction_loss, iteration)
                     else:
                         print("No valid samples")
-                    rendered_imgs = self.unnormalize(rendered_imgs)
+                    
                     rendered_imgs = torch.clamp(rendered_imgs, 0.0, 1.0)
-                    grid_rendered_imgs = torchvision.utils.make_grid(rendered_imgs, nrow=4)
+                    grid_rendered_imgs = torchvision.utils.make_grid(rendered_imgs, nrow=config.MODEL.FRUSTUM3D.NUM_VIEWS) # TODO: rendered_imgs
                     writer.add_image('eval/rendered_256', grid_rendered_imgs, iteration)
                     quantitative = self.val_metric.reduce()
                     # Print results

@@ -40,7 +40,8 @@ class Renderer(object):
         ray_increment = 0.03 * self.truncation
         thresh_sample_dist = 150.5 * ray_increment
         max_num_locs_per_sample = 640000
-        num_views = 4
+        num_views = config.MODEL.FRUSTUM3D.NUM_VIEWS
+
         self.volume_size = volume_size
 
         for i in range(num_views):

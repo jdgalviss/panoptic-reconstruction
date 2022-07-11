@@ -6,7 +6,7 @@ from typing import Dict, Union, List, Tuple
 
 import numpy as np
 import torch.utils.data
-from PIL import Image
+from PIL import Image, ImageEnhance
 import pyexr
 
 from lib import data
@@ -20,7 +20,7 @@ from skimage import io, color
 
 _imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
 
-class ToLAB(object):
+class ToLABTensor(object):
     """Convert RGB image to LAB."""
     def __int__(self):
         print("ToLab")
@@ -32,7 +32,19 @@ class ToLAB(object):
         Returns:
             np.array: LAB image array.
         """
-        return color.rgb2lab(rgb)
+
+        rgb = np.asarray(rgb, dtype=np.float32)/255.0
+        # print("\nRGB shape:", rgb.shape)
+        # print("RGB range: [{}, {}]".format(np.amin(rgb), np.amax(rgb)))
+        lab = color.rgb2lab(rgb)
+        lab[:,:,0] = (lab[:,:,0] / 100.0)
+        lab[:,:,1:] = (lab[:,:,1:] + 100.0)/200.0
+        
+        #Normalize
+        lab = 2.0 * (lab - 0.5)
+
+        lab = torch.from_numpy(lab.astype(np.float32))
+        return lab.permute(2,0,1)
 
 class Front3D(torch.utils.data.Dataset):
     def __init__(self, file_list_path: os.PathLike, dataset_root_path: os.PathLike, fields: List[str],
@@ -152,15 +164,21 @@ class Front3D(torch.utils.data.Dataset):
                 aux_views = []
                 cam_poses = []
                 
-                views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
                 views_names = [image_id]
-                for view_name in views_list.readlines():
-                    views_names.append(view_name.replace('\n',''))
+                if config.MODEL.FRUSTUM3D.NUM_VIEWS > 1:
+                    views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
+                    for view_name in views_list.readlines():
+                        views_names.append(view_name.replace('\n',''))
 
                 for aux_img_id in views_names:
                     aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
+                    if config.MODEL.FRUSTUM3D.ENHANCE_CONTRAST:
+                        enhancer = ImageEnhance.Contrast(aux_img)
+                        aux_img = enhancer.enhance(1.2)
+                    # aux_img = aux_img.astype(np.float32)/255.0
                     aux_img = self.transforms["aux_views"](aux_img)
                     # aux_image = t2d.ToTensor(aux_img)
+                    # print("aux_img.shape", aux_img.shape)
                     # print("aux_image range: [{},{}]".format(torch.min(aux_img), torch.max(aux_img)))
                     aux_views.append(aux_img)
 
@@ -211,15 +229,15 @@ class Front3D(torch.utils.data.Dataset):
         transforms = dict()
 
         # 2D transforms
-        if config.MODEL.COLOR_SPACE == "RGB":
+        
+        if config.MODEL.COLOR_SPACE == "LAB":
+            transforms["aux_views"] = t2d.Compose([
+                ToLABTensor(),
+            ])
+        else:
             transforms["aux_views"] = t2d.Compose([
                 t2d.ToTensor(),
                 t2d.Normalize(_imagenet_stats["mean"], _imagenet_stats["std"])
-            ])
-        elif config.MODEL.COLOR_SPACE == "LAB":
-            transforms["aux_views"] = t2d.Compose([
-                ToLAB(),
-                t2d.ToTensor(),
             ])
 
         transforms["color"] = t2d.Compose([

@@ -13,7 +13,7 @@ device = torch.device(config.MODEL.DEVICE)
 
 # intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
 intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 159.0, 119.0]]).to(device)
-num_views = 4
+num_views = config.MODEL.FRUSTUM3D.NUM_VIEWS
 
 def homogeneous_transform(R,t):
     last_row = torch.FloatTensor([[0,0,0,1]]).unsqueeze(0)
