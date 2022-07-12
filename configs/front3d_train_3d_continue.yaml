@@ -68,7 +68,7 @@ MODEL:
 DATASETS:
     TRAIN: "Front3D_Train"
     VAL: "Front3D_Validation"
-    TRAINVAL: "Front3D_Train"
+    TRAINVAL: "Front3D_TrainVal"
     TEST: "Front3D_Test"
     NUM_TRAIN: 0
     NUM_TEST: 100

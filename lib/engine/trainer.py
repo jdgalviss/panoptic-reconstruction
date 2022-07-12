@@ -11,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from typing import Tuple, Dict
 from lib.utils import re_seed
 from tqdm import tqdm
-from lib.modeling.utils import thicken_grid
+from lib.modeling.utils import thicken_grid, UnNormalize
 from lib.modeling.frustum.renderer_proxy import Renderer
 import torchvision
 import numpy as np
@@ -21,25 +21,7 @@ from lib.modeling.frustum.utils import convert_lab01_to_rgb_pt
 torch.cuda.set_device(config.MODEL.DEVICE_ID)
 
 stages = ["64","128","256"]
-_imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
 
-class UnNormalize(object):
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-
-    def __call__(self, tensor):
-        """
-        Args:
-            tensor (Tensor): Tensor image of size (C, H, W) to be normalized.
-        Returns:
-            Tensor: Normalized image.
-        """
-        for im in tensor:
-            for ch, m, s in zip(im, self.mean, self.std):
-                ch.mul_(s).add_(m)
-                # The normalize code -> t.sub_(m).div_(s)
-        return tensor
 
 def _prepare_instance_masks_thicken(instances, semantic_mapping, distance_field, frustum_mask) -> Dict[int, Tuple[torch.Tensor, int]]:
     instance_information = {}
@@ -158,8 +140,8 @@ class Trainer:
 
         # Dataloader
         self.dataloader = data.setup_dataloader(config.DATASETS.TRAIN)
-        print("VAL DATASET FOLDER: ", config.DATASETS.VAL)
-        self.val_dataloader = data.setup_dataloader(config.DATASETS.VAL, is_train=False, shuffle=False)
+        print("VAL DATASET FOLDER: ", config.DATASETS.TRAINVAL)
+        self.val_dataloader = data.setup_dataloader(config.DATASETS.TRAINVAL, is_train=False, shuffle=False)
 
         # Prepare evaluation metric
         self.val_metric = metrics.PanopticReconstructionQuality()
