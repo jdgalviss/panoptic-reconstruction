@@ -1,28 +1,24 @@
 import time
 from collections import OrderedDict
 from pathlib import Path
-
 import torch
 from lib.structures.field_list import collect
-
 from lib import utils, logger, config, modeling, solver, data, metrics
-
 import glob
 from datetime import datetime
 import os
 from torch.utils.tensorboard import SummaryWriter
 from typing import Tuple, Dict
-
 from lib.utils import re_seed
 from tqdm import tqdm
 from lib.modeling.utils import thicken_grid
-
 from lib.modeling.frustum.renderer_proxy import Renderer
 import torchvision
 import numpy as np
 from lib.utils.intrinsics import adjust_intrinsic
 import pprint
 from lib.modeling.frustum.utils import convert_lab01_to_rgb_pt
+torch.cuda.set_device(config.MODEL.DEVICE_ID)
 
 stages = ["64","128","256"]
 _imagenet_stats = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
