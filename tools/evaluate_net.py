@@ -7,11 +7,11 @@ import torch
 from tqdm import tqdm
 from typing import Tuple, Dict
 
-from lib import modeling, metrics, visualize
+from lib import modeling, metrics, visualize, utils
 
 from lib.data import setup_dataloader
 
-from lib.modeling.utils import thicken_grid
+from lib.modeling.utils import thicken_grid, UnNormalize
 from lib.visualize.mesh import get_mesh
 
 from lib.config import config
@@ -20,7 +20,12 @@ from lib.structures.field_list import collect
 
 from tools.test_net_single_image import configure_inference
 from lib.utils import re_seed
-
+import glob
+from datetime import datetime
+from lib.utils.intrinsics import adjust_intrinsic
+from torch.utils.tensorboard import SummaryWriter
+from lib.modeling.frustum.renderer_proxy import Renderer
+from lib.modeling.frustum.utils import convert_lab01_to_rgb_pt
 
 def main(opts, start=0, end=None):
     configure_inference(opts)
@@ -28,27 +33,67 @@ def main(opts, start=0, end=None):
     re_seed(0)
     device = torch.device("cuda:0")
 
-    output_path = Path(config.OUTPUT_DIR)
+    # basic paths
+    files = glob.glob(config.OUTPUT_DIR + "*")
+    max_file = max(files)
+    now = str(datetime.now()) # current date and time
+    out_dir = config.OUTPUT_DIR + "{:02d}_eval_{}".format(int(max_file.split('/')[-1].split('_')[0])+1, now.replace(' ','').replace(':','_'))
+    # out_dir = 'output/01' #TODO: Temporary
+    # os.mkdir(out_dir)
+    print('Saving Evaluation results to:', out_dir)
+
+    output_path = Path(out_dir)
     output_path.mkdir(exist_ok=True, parents=True)
+    output_config_path = output_path / "config.yaml"
+    utils.save_config(config, output_config_path)
+    utils.setup_logger(output_path, "log.txt")
+    writer = SummaryWriter(log_dir=str(output_path / "tensorboard"))
+
 
     # Define model and load checkpoint.
     print("Load model...")
     model = modeling.PanopticReconstruction()
-    checkpoint = torch.load(opts.model)
+    checkpoint = torch.load(config.MODEL.PRETRAIN)
     model.load_state_dict(checkpoint["model"])  # load model checkpoint
     model = model.to(device)  # move to gpu
     model.switch_test()
 
     # Define dataset
     # config.DATALOADER.NUM_WORKERS=0
-    dataloader = setup_dataloader(config.DATASETS.VAL, False, is_iteration_based=False, shuffle=False)
-    dataloader.dataset.samples = dataloader.dataset.samples[start:end]
-    print(f"Loaded {len(dataloader.dataset)} samples.")
+    dataloader = setup_dataloader(config.DATASETS.TRAINVAL, is_train=False, shuffle=False)
+    # dataloader.dataset.samples = dataloader.dataset.samples[start:end]
+    print("Evaluating on {} samples".format(len(dataloader)))
+
 
     # Prepare metric
     metric = metrics.PanopticReconstructionQuality()
 
+    # Prepare intrinsic matrix for eval
+    color_image_size = (320, 240)
+    depth_image_size = (160, 120)
+    front3d_intrinsic = np.array(config.MODEL.PROJECTION.INTRINSIC)
+    front3d_intrinsic = adjust_intrinsic(front3d_intrinsic, color_image_size, depth_image_size)
+    front3d_intrinsic = torch.from_numpy(front3d_intrinsic).to(device).float()
+
+    # Prepare frustum mask for eval
+    front3d_frustum_mask = np.load(str("data/frustum_mask.npz"))["mask"]
+    front3d_frustum_mask = torch.from_numpy(front3d_frustum_mask).bool().to(device).unsqueeze(0).unsqueeze(0)
+
+    # For Color Image Rendering
+    renderer_256 = Renderer(camera_base_transform=None, voxelsize=0.03*256./254, volume_size=254)
+    # Unnormalize transform
+    unnormalize = UnNormalize(mean=(0.485, 0.456, 0.406),std=(0.229, 0.224, 0.225))
+
+    # Color Metrics
+    l1_metric = metrics.L1ReconstructionLoss()
+    ssim_metric = metrics.SSIM()
+    feat_l1_metric = metrics.Feature_L1()
+    color_metrics = {"L1": 0.0, "SSIM": 0.0, "FeatureL1": 0.0}
+
+    num_images = 0
     for idx, (image_ids, targets) in tqdm(enumerate(dataloader), total=len(dataloader)):
+        if idx % 2 == 0:
+            continue
         if targets is None:
             print(f"Error, {image_ids[0]}")
             continue
@@ -59,7 +104,7 @@ def main(opts, start=0, end=None):
         # Pass through model
         with torch.no_grad():
             try:
-                _, results = model(images, targets)
+                results = model.inference(images, front3d_intrinsic, front3d_frustum_mask)
             except Exception as e:
                 print(e)
                 del targets, images
@@ -96,12 +141,52 @@ def main(opts, start=0, end=None):
         with open(output_path / f"{file_name}.json", "w") as f:
             json.dump({k: cat.as_metric for k, cat in per_sample_result.items()}, f, indent=4)
 
-        if opts.verbose:
-            pprint(per_sample_result)
+        # Color Metrics
+        cam_poses = collect(targets, "cam_poses")
+        views = collect(targets, "aux_views")
+        dense_dimensions = torch.Size([1, 1] + config.MODEL.FRUSTUM3D.GRID_DIMENSIONS)
+        min_coordinates = torch.IntTensor([0, 0, 0]).to("cuda")
+        truncation = config.MODEL.FRUSTUM3D.TRUNCATION
+        sdf, _, _ = results['frustum']['geometry'].dense(dense_dimensions, min_coordinates, default_value=truncation)
+        rgb, _, _ = results['frustum']['rgb'].dense(dense_dimensions, min_coordinates, default_value=truncation)
+        imgs, _ = renderer_256.render_image(sdf,rgb,cam_poses)
 
+        views = views.permute(0,1,3,4,2)
+        views = views[0]
+        masks = (torch.logical_or(torch.isinf(imgs),torch.isnan(imgs)))
+        imgs[masks] = 0.0
+        views[masks] = 0.0
+        N = (torch.sum(torch.logical_not(masks)).item())
+        imgs = imgs.permute(0,3,1,2)
+        views = views.permute(0,3,1,2)
+
+        imgs = unnormalize(imgs)
+        views = unnormalize(views)
+
+        imgs = torch.clamp(imgs, 0.0, 1.0)
+        with torch.no_grad():
+            l1_metric.add(imgs, views,N)
+            ssim_metric.add(imgs, views)
+            feat_l1_metric.add(imgs, views)
+            num_images +=1
+    
     # Reduce metric
     quantitative = metric.reduce()
+    writer.add_scalar('eval/panoptic_quality', quantitative["pq"])
+    writer.add_scalar('eval/segmentation_quality', quantitative["sq"])
+    writer.add_scalar('eval/recognition_quality', quantitative["rq"])
 
+    # Color Metrics
+    color_metrics['L1'] = l1_metric.reduce()
+    color_metrics['SSIM'] = ssim_metric.reduce()
+    color_metrics['FeatureL1'] = feat_l1_metric.reduce()
+
+    print("\nColor Metrics: ")
+    for k, v in color_metrics.items():
+        writer.add_scalar(f'eval/{k}', v)
+        print(f"{k}: {v}")
+
+    print("\nPanoptic Reconstruction Metrics:")
     # Print results
     for k, v in quantitative.items():
         print(f"{k:>5}", f"{v:.3f}")
@@ -206,14 +291,18 @@ def evaluate_jsons(opts):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", "-o", type=str, default="output/evaluation/")
+    parser.add_argument("--output", "-o", type=str, default="output/")
     parser.add_argument("--config-file", "-c", type=str, default="configs/front3d_evaluate.yaml")
-    parser.add_argument("--model", "-m", type=str, default="resources/panoptic-front3d.pth")
+    parser.add_argument("--eval-only", type=bool, default=False)
+    # parser.add_argument("--model", "-m", type=str, default="resources/panoptic-front3d.pth")
     parser.add_argument("-s", type=int, default=0)
     parser.add_argument("-e", type=int, default=None)
     parser.add_argument("opts", default=None, nargs=argparse.REMAINDER)
 
     args = parser.parse_args()
+    config.OUTPUT_DIR = args.output
+    config.merge_from_file(args.config_file)
+    config.merge_from_list(args.opts)
 
     if args.eval_only:
         evaluate_jsons(args)

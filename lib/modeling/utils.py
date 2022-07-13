@@ -7,6 +7,24 @@ import torch
 ModuleResult = Tuple[Dict, Dict]
 
 
+class UnNormalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        """
+        Args:
+            tensor (Tensor): Tensor image of size (C, H, W) to be normalized.
+        Returns:
+            Tensor: Normalized image.
+        """
+        for im in tensor:
+            for ch, m, s in zip(im, self.mean, self.std):
+                ch.mul_(s).add_(m)
+                # The normalize code -> t.sub_(m).div_(s)
+        return tensor
+
 def sparse_cat_union(a: Me.SparseTensor, b: Me.SparseTensor):
     cm = a.coordinate_manager
     assert cm == b.coordinate_manager, "different coords_man"

@@ -1,7 +1,7 @@
 .idea
 preparation
 lib/csrc
-
+data2
 output
 *.ipynb_checkpoints*
 *__pycache__*

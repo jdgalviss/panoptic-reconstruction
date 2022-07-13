@@ -1,8 +1,10 @@
 MODEL:
     FIX2D: True
     PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
-    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/01_2022-06-2810_19_47.149715/model_final.pth"
+    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/27_2022-07-1005_35_07.805685/model_0003000.pth"
     ONLY_PANOPTIC_PRETRAINED: True
+    USE_PRETRAINED: True
+    COLOR_SPACE: "RGB"
 
     FIXNORM: True
 
@@ -24,6 +26,8 @@ MODEL:
         TRUNCATION: 3.0
         ISO_VALUE: 1.0
         IS_SDF: False
+        NUM_VIEWS: 1
+        ENHANCE_CONTRAST: True
 
         SEMANTIC_WEIGHT: 5.0
         INSTANCE_WEIGHT: 25.0
@@ -31,16 +35,22 @@ MODEL:
         COMPLETION_128_WEIGHT: 25.0
         COMPLETION_256_WEIGHT: 10.0
         L1_WEIGHT: 5.0
-        L1_WEIGHT_64: 5.0
-        L1_WEIGHT_128: 5.0
-        RGB_WEIGHT: 50.0
-        RGB_WEIGHT_64: 1.0
-        RGB_WEIGHT_128: 2.5
+        L1_WEIGHT_64: 0.05
+        L1_WEIGHT_128: 0.1
+        RGB_WEIGHT: 30.0
+        RGB_WEIGHT_64: 0.1
+        RGB_WEIGHT_128: 0.2
+
+        # RGB WEIGHTS
+        RGB_L1_WEIGHT: 8.0
+        STYLE_WEIGHT: 0.001
+        CONTENT_WEIGHT: 0.001
+        GEN_WEIGHT: 0.75
  
-        LEVEL_ITERATIONS_64: 500 # 10000
-        LEVEL_ITERATIONS_128: 1250 # 25000
-        LEVEL_ITERATIONS_256: 2500 #5000
-        LEVEL_ITERATIONS_RGB: 2500 #5000  #TO DO: Implement. Right now it is unused
+        LEVEL_ITERATIONS_64: 10000 # 10000
+        LEVEL_ITERATIONS_128: 5000 # 25000
+        LEVEL_ITERATIONS_256: 5000 #5000
+        LEVEL_ITERATIONS_RGB: 2000 #5000  #TO DO: Implement. Right now it is unused
 
 
         COMPLETION_VOXEL_WEIGHTING: True
@@ -64,15 +74,15 @@ DATASETS:
 
 DATALOADER:
     IMS_PER_BATCH: 1
-    MAX_ITER: 6000 #300000
+    MAX_ITER: 300000 #300000
     SHUFFLE: True
-    NUM_WORKERS: 4
+    NUM_WORKERS: 6
 
 SOLVER:
-    BASE_LR: 0.00025
+    BASE_LR: 0.0001
     BETA_1: 0.9
     BETA_2: 0.999
-    STEPS: (3500, 4500) #(100000, 150000)
-    CHECKPOINT_PERIOD: 1000 #5000
+    STEPS: (100000, 150000) #(100000, 150000)
+    CHECKPOINT_PERIOD: 5000 #5000
     WEIGHT_DECAY: 0.000001
     EVALUATION_PERIOD: 1000 #50000

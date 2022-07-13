@@ -17,3 +17,4 @@ from .masked_absolute_error import MaskedAbsoluteError
 from .mean_average_precision import MeanAveragePrecision
 
 from .panoptic_reconstruction_quality import PanopticReconstructionQuality
+from .color_metrics import L1ReconstructionLoss, SSIM, Feature_L1

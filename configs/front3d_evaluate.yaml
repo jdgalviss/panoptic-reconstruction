@@ -1,6 +1,9 @@
 MODEL:
     FIX2D: True
-    PRETRAIN: "resources/panoptic-front3d.pth"
+    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/37_2022-07-1101_18_20.803012/model_0027000.pth"
+    ONLY_PANOPTIC_PRETRAINED: False
+    COLOR_SPACE: "RGB"
+
 
     FIXNORM: True
 
@@ -18,9 +21,13 @@ MODEL:
 
     FRUSTUM3D:
         USE: True
-        FIX: True
+        FIX: False
         TRUNCATION: 3.0
         ISO_VALUE: 1.0
+        IS_SDF: False
+        NUM_VIEWS: 1
+        ENHANCE_CONTRAST: True
+
 
         SEMANTIC_WEIGHT: 5.0
         INSTANCE_WEIGHT: 25.0
@@ -28,10 +35,23 @@ MODEL:
         COMPLETION_128_WEIGHT: 25.0
         COMPLETION_256_WEIGHT: 10.0
         L1_WEIGHT: 5.0
+        L1_WEIGHT_64: 0.1
+        L1_WEIGHT_128: 0.2
+        RGB_WEIGHT: 40.0
+        RGB_WEIGHT_64: 0.2
+        RGB_WEIGHT_128: 0.5
 
-        LEVEL_ITERATIONS_64: 10000
-        LEVEL_ITERATIONS_128: 5000
-        LEVEL_ITERATIONS_256: 5000
+        # RGB WEIGHTS
+        RGB_L1_WEIGHT: 8.0
+        STYLE_WEIGHT: 0.001
+        CONTENT_WEIGHT: 0.001
+        GEN_WEIGHT: 0.75
+ 
+        LEVEL_ITERATIONS_64: 500 # 10000
+        LEVEL_ITERATIONS_128: 1250 # 25000
+        LEVEL_ITERATIONS_256: 2500 #5000
+        LEVEL_ITERATIONS_RGB: 2500 #5000  #TO DO: Implement. Right now it is unused
+
 
         COMPLETION_VOXEL_WEIGHTING: True
         COMPLETION_128_VOXEL_WEIGHTING: True
@@ -42,28 +62,27 @@ MODEL:
         INSTANCE_VOXEL_WEIGHTING: False
 
 DATASETS:
-    NAME: "front3d"
     TRAIN: "Front3D_Train"
     VAL: "Front3D_Validation"
-    TRAINVAL: "Front3D_Train"
+    TRAINVAL: "Front3D_TrainVal"
     TEST: "Front3D_Test"
     NUM_TRAIN: 0
     NUM_TEST: 100
     NUM_VALIDATE: 50
     OVERFITTING: False
-    FIELDS: ("color", "depth", "instance2d", "geometry", "instance3d", "semantic3d")
+    FIELDS: ("color", "depth", "instance2d", "geometry", "instance3d", "semantic3d", "aux_views")
 
 DATALOADER:
     IMS_PER_BATCH: 1
-    MAX_ITER: 300000
+    MAX_ITER: 4000 #300000
     SHUFFLE: True
-    NUM_WORKERS: 4
+    NUM_WORKERS: 6
 
 SOLVER:
     BASE_LR: 0.0001
     BETA_1: 0.9
     BETA_2: 0.999
-    STEPS: (100000, 150000)
-    CHECKPOINT_PERIOD: 5000
-    WEIGHT_DECAY: 0.000000
-    EVALUATION_PERIOD: 50000
+    STEPS: (2000, 2500) #(100000, 150000)
+    CHECKPOINT_PERIOD: 1000 #5000
+    WEIGHT_DECAY: 0.000001
+    EVALUATION_PERIOD: 200 #50000

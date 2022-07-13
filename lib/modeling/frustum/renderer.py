@@ -12,8 +12,8 @@ device = torch.device(config.MODEL.DEVICE)
 
 
 # intrinsics = torch.FloatTensor([[277.1281435, 311.76912635, 160.0, 120.0]]).to(device)
-intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 160.0, 120.0]]).to(device)
-num_views = 4
+intrinsics = torch.FloatTensor([[277.1281435, 277.1281435, 159.0, 119.0]]).to(device)
+num_views = config.MODEL.FRUSTUM3D.NUM_VIEWS
 
 def homogeneous_transform(R,t):
     last_row = torch.FloatTensor([[0,0,0,1]]).unsqueeze(0)
@@ -42,12 +42,14 @@ class Renderer(object):
     voxelsize : float
         voxel size of the SDF
     """
-    def __init__(self, camera_base_transform = None, voxelsize = 0.03*254./256., truncation=3.0):
+    def __init__(self, camera_base_transform = None, voxelsize = 0.03*254./256., truncation=2.0):
         R0, t0 = look_at_view_transform(dist=-200, elev=0, azim=90)
         t0 = torch.FloatTensor([[0.0,127.0,127.0]])
         # Base Camera (original view) to Renderer World Transform
         self.T_view1 = homogeneous_transform(R0,t0.transpose(0,1).unsqueeze(0)).to(device)
-        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.5],[0.0,1.0,0.0,-2.0],[0.0,0.0,1.0,18.0],[0.0,0.0,0.0,1.0]]).to(device)
+        self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.0],[0.0,1.0,0.0,-1.0],[0.0,0.0,1.0,21.5],[0.0,0.0,0.0,1.0]]).to(device)
+        # self.T_off = torch.FloatTensor([[1.0,0.0,0.0,1.0],[0.0,1.0,0.0,-2.0],[0.0,0.0,1.0,22.0],[0.0,0.0,0.0,1.0]]).to(device)
+
         self.T_view1[0] = self.T_view1[0] @ self.T_off
         if not camera_base_transform is None:
             self.T_pose1 = camera_base_transform.to(device)

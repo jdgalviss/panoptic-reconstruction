@@ -2,7 +2,10 @@ MODEL:
     FIX2D: True
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/02_2022-06-2910_18_19.152368/model_final.pth"
-    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/17_2022-07-0601_05_49.968777/model_0005500.pth"
+    # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/21_2022-07-0716_03_29.594213/model_final.pth"
+    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/27_2022-07-1005_35_07.805685/model_0003000.pth"
+
+    COLOR_SPACE: "LAB"
 
     ONLY_PANOPTIC_PRETRAINED: False
 

@@ -66,6 +66,7 @@ def get_mesh_with_rgb(distance_field: np.array, colors: np.array, iso_value: flo
     vertices, triangles = mc.marching_cubes_color(distance_field, colors, iso_value, truncation)
     colors = vertices[..., 3:]
     colors = colors*_imagenet_stats['std']+_imagenet_stats['mean']
+    colors = np.clip(colors,0.0,1.0)
     colors *= 255.0
     vertices = vertices[..., :3]
 
