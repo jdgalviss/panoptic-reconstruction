@@ -164,27 +164,34 @@ class Front3D(torch.utils.data.Dataset):
                 aux_views = []
                 cam_poses = []
                 
-                views_names = [image_id]
-                if config.MODEL.FRUSTUM3D.NUM_VIEWS > 1:
-                    views_list = open(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt", 'r')
-                    for view_name in views_list.readlines():
-                        views_names.append(view_name.replace('\n',''))
+                # views_names = [image_id]
+                views_names = []
 
-                for aux_img_id in views_names:
-                    aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
-                    if config.MODEL.FRUSTUM3D.ENHANCE_CONTRAST:
-                        enhancer = ImageEnhance.Contrast(aux_img)
-                        aux_img = enhancer.enhance(1.2)
-                    # aux_img = aux_img.astype(np.float32)/255.0
-                    aux_img = self.transforms["aux_views"](aux_img)
-                    # aux_image = t2d.ToTensor(aux_img)
-                    # print("aux_img.shape", aux_img.shape)
-                    # print("aux_image range: [{},{}]".format(torch.min(aux_img), torch.max(aux_img)))
-                    aux_views.append(aux_img)
+                if config.MODEL.FRUSTUM3D.NUM_VIEWS > 0:
+                    try:
+                        views_list = open(self.dataset_root_path / scene_id / f"viewlist_{image_id}.txt", 'r')
+                        for view_name in views_list.readlines():
+                            views_names.append(view_name.replace('\n',''))
+                    except:
+                        print("\nCould not find viewlist.txt")
+                        print(self.dataset_root_path / scene_id / f"viewslist_{image_id}.txt")
 
-                    campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
-                    cam2world = np.load(campose_path)["blender_matrix"]
-                    cam_poses.append(torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0))
+                for i, aux_img_id in enumerate(views_names):
+                    if i < config.MODEL.FRUSTUM3D.NUM_VIEWS:
+                        aux_img = Image.open(self.dataset_root_path / scene_id / f"rgb_{aux_img_id}.png", formats=["PNG"])
+                        if config.MODEL.FRUSTUM3D.ENHANCE_CONTRAST:
+                            enhancer = ImageEnhance.Contrast(aux_img)
+                            aux_img = enhancer.enhance(1.2)
+                        # aux_img = aux_img.astype(np.float32)/255.0
+                        aux_img = self.transforms["aux_views"](aux_img)
+                        # aux_image = t2d.ToTensor(aux_img)
+                        # print("aux_img.shape", aux_img.shape)
+                        # print("aux_image range: [{},{}]".format(torch.min(aux_img), torch.max(aux_img)))
+                        aux_views.append(aux_img)
+
+                        campose_path = self.dataset_root_path / scene_id / f"campose_{aux_img_id}.npz"
+                        cam2world = np.load(campose_path)["blender_matrix"]
+                        cam_poses.append(torch.from_numpy(cam2world).type(torch.FloatTensor).unsqueeze(0))
                 sample.add_field("aux_views", torch.stack(aux_views))
                 sample.add_field("cam_poses", torch.stack(cam_poses))
 

@@ -1,11 +1,11 @@
 MODEL:
     FIX2D: True
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/23_2022-07-0900_29_19.061156/model_0002000.pth"
-    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/23_2022-07-0900_29_19.061156/model_0002000.pth"
+    PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/00_pretrained/model_full_54000.pth"
     
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/01_2022-06-2810_19_47.149715/model_final.pth"
     ONLY_PANOPTIC_PRETRAINED: False
-    ITERATION: 2000
+    ITERATION: 54000
     COLOR_SPACE: "RGB"
 
 
@@ -29,12 +29,12 @@ MODEL:
         TRUNCATION: 3.0
         ISO_VALUE: 1.0
         IS_SDF: False
-        NUM_VIEWS: 1
+        NUM_VIEWS: 3
         ENHANCE_CONTRAST: True
 
 
-        SEMANTIC_WEIGHT: 5.0
-        INSTANCE_WEIGHT: 25.0
+        SEMANTIC_WEIGHT: 0.05
+        INSTANCE_WEIGHT: 0.1
         COMPLETION_WEIGHT: 50.0
         COMPLETION_128_WEIGHT: 25.0
         COMPLETION_256_WEIGHT: 10.0
@@ -42,19 +42,19 @@ MODEL:
         L1_WEIGHT_64: 0.1
         L1_WEIGHT_128: 0.2
         RGB_WEIGHT: 40.0
-        RGB_WEIGHT_64: 0.2
-        RGB_WEIGHT_128: 0.5
+        RGB_WEIGHT_64: 0.1
+        RGB_WEIGHT_128: 0.2
 
         # RGB WEIGHTS
         RGB_L1_WEIGHT: 8.0
         STYLE_WEIGHT: 0.001
         CONTENT_WEIGHT: 0.001
-        GEN_WEIGHT: 0.75
+        GEN_WEIGHT: 1.0
  
-        LEVEL_ITERATIONS_64: 500 # 10000
-        LEVEL_ITERATIONS_128: 1250 # 25000
-        LEVEL_ITERATIONS_256: 2500 #5000
-        LEVEL_ITERATIONS_RGB: 2500 #5000  #TO DO: Implement. Right now it is unused
+        LEVEL_ITERATIONS_64: 200 # 10000
+        LEVEL_ITERATIONS_128: 200 # 25000
+        LEVEL_ITERATIONS_256: 200 #5000
+        LEVEL_ITERATIONS_RGB: 200 #5000  #TO DO: Implement. Right now it is unused
 
 
         COMPLETION_VOXEL_WEIGHTING: True
@@ -78,7 +78,7 @@ DATASETS:
 
 DATALOADER:
     IMS_PER_BATCH: 1
-    MAX_ITER: 4000 #300000
+    MAX_ITER: 246000 #300000
     SHUFFLE: True
     NUM_WORKERS: 6
 
@@ -86,7 +86,7 @@ SOLVER:
     BASE_LR: 0.0001
     BETA_1: 0.9
     BETA_2: 0.999
-    STEPS: (2000, 2500) #(100000, 150000)
+    STEPS: (46000, 96000) #(100000, 150000)
     CHECKPOINT_PERIOD: 1000 #5000
     WEIGHT_DECAY: 0.000001
-    EVALUATION_PERIOD: 200 #50000
+    EVALUATION_PERIOD: 1000 #50000
