@@ -88,10 +88,12 @@ def main(opts, start=0, end=None):
     l1_metric = metrics.L1ReconstructionLoss()
     ssim_metric = metrics.SSIM()
     feat_l1_metric = metrics.Feature_L1()
-    color_metrics = {"L1": 0.0, "SSIM": 0.0, "FeatureL1": 0.0, "FID": 0.0}
+    color_metrics = {"L1": 0.0, "SSIM": 0.0, "FeatureL1": 0.0}
 
     num_images = 0
     for idx, (image_ids, targets) in tqdm(enumerate(dataloader), total=len(dataloader)):
+        if idx % 2 == 0:
+            continue
         if targets is None:
             print(f"Error, {image_ids[0]}")
             continue
@@ -162,10 +164,11 @@ def main(opts, start=0, end=None):
         views = unnormalize(views)
 
         imgs = torch.clamp(imgs, 0.0, 1.0)
-        l1_metric.add(imgs, views,N)
-        ssim_metric.add(imgs, views)
-        feat_l1_metric.add(imgs, views)
-        num_images +=1
+        with torch.no_grad():
+            l1_metric.add(imgs, views,N)
+            ssim_metric.add(imgs, views)
+            feat_l1_metric.add(imgs, views)
+            num_images +=1
     
     # Reduce metric
     quantitative = metric.reduce()

@@ -53,6 +53,7 @@ class SSIM(Metric):
         s"""
         self.value += self.ssim(imgs, targets)
         self.num_imgs += 1
+        self.ssim.reset()
 
     def reduce(self):
         return self.value / self.num_imgs
