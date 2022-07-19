@@ -3,7 +3,7 @@ MODEL:
     PRETRAIN: "/usr/src/app/panoptic-reconstruction/data/panoptic-front3d.pth"
     # PRETRAIN: "/usr/src/app/panoptic-reconstruction/output/27_2022-07-1005_35_07.805685/model_0003000.pth"
     ONLY_PANOPTIC_PRETRAINED: True
-    USE_PRETRAINED: True
+    USE_PRETRAINED: False
     COLOR_SPACE: "RGB"
 
     FIXNORM: True
@@ -29,28 +29,28 @@ MODEL:
         NUM_VIEWS: 1
         ENHANCE_CONTRAST: True
 
-        SEMANTIC_WEIGHT: 5.0
-        INSTANCE_WEIGHT: 25.0
-        COMPLETION_WEIGHT: 50.0
-        COMPLETION_128_WEIGHT: 25.0
-        COMPLETION_256_WEIGHT: 10.0
+        SEMANTIC_WEIGHT: 0.5
+        INSTANCE_WEIGHT: 2.0
+        COMPLETION_WEIGHT: 25.0
+        COMPLETION_128_WEIGHT: 10.0
+        COMPLETION_256_WEIGHT: 5.0
         L1_WEIGHT: 5.0
         L1_WEIGHT_64: 0.05
         L1_WEIGHT_128: 0.1
-        RGB_WEIGHT: 30.0
-        RGB_WEIGHT_64: 0.1
-        RGB_WEIGHT_128: 0.2
+        RGB_WEIGHT: 20.0
+        RGB_WEIGHT_64: 0.05
+        RGB_WEIGHT_128: 0.1
 
         # RGB WEIGHTS
         RGB_L1_WEIGHT: 8.0
         STYLE_WEIGHT: 0.001
         CONTENT_WEIGHT: 0.001
-        GEN_WEIGHT: 0.75
+        GEN_WEIGHT: 1.0
  
         LEVEL_ITERATIONS_64: 10000 # 10000
         LEVEL_ITERATIONS_128: 5000 # 25000
         LEVEL_ITERATIONS_256: 5000 #5000
-        LEVEL_ITERATIONS_RGB: 2000 #5000  #TO DO: Implement. Right now it is unused
+        LEVEL_ITERATIONS_RGB: 5000 #5000  #TO DO: Implement. Right now it is unused
 
 
         COMPLETION_VOXEL_WEIGHTING: True
