@@ -262,7 +262,7 @@ class Trainer:
 
 
             # Evaluation
-            if iteration % config.SOLVER.EVALUATION_PERIOD == 0 and (current_training_stage == "FULL" or current_training_stage == "LEVEL-256"):
+            if iteration % config.SOLVER.EVALUATION_PERIOD == 0 and (current_training_stage == "FULL"):
                 self.model.switch_test()
                 print("Evaluating on {} samples".format(len(self.val_dataloader)))
                 metrics = {}
