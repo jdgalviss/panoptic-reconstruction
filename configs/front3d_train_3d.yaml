@@ -28,7 +28,7 @@ MODEL:
         ISO_VALUE: 1.0
         IS_SDF: False
         NUM_VIEWS: 3
-        ENHANCE_CONTRAST: True
+        ENHANCE_CONTRAST: False
 
         SEMANTIC_WEIGHT: 0.5
         INSTANCE_WEIGHT: 1.0

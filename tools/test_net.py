@@ -29,7 +29,6 @@ def configure_inference(opts):
 
 
 config.merge_from_file('configs/front3d_train_3d_test.yaml')
-config.MODEL.PRETRAIN = "/usr/src/app/panoptic-reconstruction/output/00_pretrained/model_overfit_6classes.pth"
 # inference settings
 config.MODEL.FRUSTUM3D.IS_LEVEL_64 = False
 config.MODEL.FRUSTUM3D.IS_LEVEL_128 = False
@@ -57,16 +56,16 @@ import lib.visualize as vis
 from lib.structures.frustum import compute_camera2frustum_transform
 from lib.structures import DepthMap
 
-img_names = ["b4dd7f88-1d68-47ff-b99a-0a96d8b8b116/0009"]
+img_names = ["0007", "0009", "0043", "0029"]
 
 for img_name in img_names:
     img_folder = img_name.split('/')[0]
     img_id = img_name.split('/')[1]
     
-    input_path = "data/front3d/{}/rgb_{}.png".format(img_folder, img_id)
+    input_path = "data/front3d-sample/rgb_{}.png".format(img_name)
     print("\nprocessing image: ", input_path)
     
-    config.OUTPUT_DIR='output/00/{}/{}_{}'.format("model_color",img_folder,img_id)
+    config.OUTPUT_DIR='output/00/{}'.format(img_name)
 
     # Define image transformation.
     color_image_size = (320, 240)

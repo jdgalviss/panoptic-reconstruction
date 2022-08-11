@@ -127,6 +127,10 @@ class Trainer:
         # Load the checkpoint
         checkpoint_data = self.checkpointer.load()
 
+        # Overwrite scheduler milestones when continueing training from a checkpoint
+        self.scheduler.milestones = config.SOLVER.STEPS
+        self.optimizer.param_groups[0]['weight_decay'] = config.SOLVER.WEIGHT_DECAY
+
         # Additionally load a 2D model which overwrites the previously loaded weights
         # TODO: move to checkpointer?
         if config.MODEL.PRETRAIN2D:

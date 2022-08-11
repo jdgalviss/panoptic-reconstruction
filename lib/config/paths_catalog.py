@@ -14,7 +14,7 @@ class DatasetCatalog:
         },
 
         "Front3D_Train": {
-            "file_list_path": "resources/front3d/train_list_3d_new.txt",
+            "file_list_path": "resources/front3d/train_list_3d.txt",
             "dataset_root_path": "data/front3d/",
             "factory": "Front3D"
         },
@@ -27,7 +27,7 @@ class DatasetCatalog:
         },
 
         "Front3D_TrainVal": {
-            "file_list_path": "resources/front3d/validation_list_3d_subsampled.txt",
+            "file_list_path": "resources/front3d/validation_list_3d_subsampled_12.txt",
             "dataset_root_path": "data/front3d/",
             "factory": "Front3D"
 
